@@ -678,13 +678,15 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 font-sans">
       {/* 최상단 네비게이션 헤더 */}
-      <header className="w-full max-w-md md:max-w-4xl lg:max-w-5xl flex items-center justify-between py-2 px-1 mb-2">
+      <header className="w-full max-w-md md:max-w-4xl lg:max-w-5xl flex items-center justify-between py-2 px-1 mb-2 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-2xl animate-bounce shrink-0">🐎</span>
-          <div className="min-w-0">
-            <h1 className="text-base font-black tracking-tight text-white flex items-center gap-1.5 font-digital flex-wrap">
-              <span className="whitespace-nowrap">야근 미터기</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 whitespace-nowrap">
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-base font-black tracking-tight text-white font-digital whitespace-nowrap">
+                야근 미터기
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono whitespace-nowrap">
                 OverTaxed
               </span>
               {settings.useGoogleSheets && settings.googleScriptUrl && (
@@ -697,12 +699,12 @@ export const App: React.FC = () => {
                   title="기기 간 실시간 주행 동기화 활성화됨 (Mac ↔ iPhone)"
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${isCloudSynced ? 'bg-sky-400 animate-pulse' : 'bg-amber-400'}`} />
-                  {isCloudSynced ? '클라우드 동기화' : '동기화 연결중'}
+                  {isCloudSynced ? '클라우드 동기화' : '연결중'}
                 </span>
               )}
-            </h1>
-            <p className="text-[10px] text-slate-500 font-mono whitespace-nowrap truncate">
-              실시간 야근 수당 계산 & Google Sheets 연동
+            </div>
+            <p className="text-[10px] text-slate-400 font-mono whitespace-nowrap mt-0.5">
+              실시간 레트로 야근 수당 계산기
             </p>
           </div>
         </div>
