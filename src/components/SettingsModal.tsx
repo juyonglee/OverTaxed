@@ -53,9 +53,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   if (!isOpen) return null;
 
   const handleCopyScript = () => {
-    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_TEMPLATE);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // 1차 시도: Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(GOOGLE_APPS_SCRIPT_TEMPLATE)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {
+          fallbackCopyText(GOOGLE_APPS_SCRIPT_TEMPLATE);
+        });
+    } else {
+      fallbackCopyText(GOOGLE_APPS_SCRIPT_TEMPLATE);
+    }
+  };
+
+  const fallbackCopyText = (text: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        alert('클립보드 권한이 차단되었습니다. 아래 코드 박스에서 직접 전체 선택(Cmd+A) 후 복사해 주세요!');
+      }
+    } catch {
+      alert('클립보드 복사 실패: 아래 코드 박스에서 직접 복사해 주세요.');
+    }
   };
 
   const handleTestSend = async () => {
@@ -380,22 +414,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
 
               {showScriptGuide && (
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] text-slate-300 flex flex-col gap-2 mt-1">
-                  <p className="font-bold text-emerald-400">구글 시트 연동 3단계 (100% 무료):</p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-[11px] text-slate-300 flex flex-col gap-2.5 mt-1">
+                  <p className="font-bold text-emerald-400">구글 시트 연동 4단계 (100% 무료):</p>
+                  <ol className="list-decimal list-inside space-y-1.5 text-slate-300">
                     <li>구글 드라이브에서 빈 스프레드시트 하나를 만듭니다.</li>
-                    <li>메뉴에서 [확장 프로그램] &gt; [Apps Script]를 클릭합니다.</li>
-                    <li>아래 코드를 복사하여 붙여넣고 [배포] &gt; [새 배포]를 누릅니다.</li>
-                    <li>유형을 [웹 앱]으로 선택하고, 액세스를 [모든 사용자]로 한 뒤 생성된 URL을 위에 붙여넣으면 끝!</li>
+                    <li>메뉴에서 <strong>[확장 프로그램] &gt; [Apps Script]</strong>를 클릭합니다.</li>
+                    <li className="text-amber-300">
+                      화면에 보이는 <code className="bg-slate-900 px-1 py-0.5 rounded text-rose-400">function myFunction() &#123; &#125;</code> 3줄을 <strong>모두 싹 지워서 빈 화면</strong>으로 만듭니다.
+                    </li>
+                    <li>아래 코드를 복사해서 그대로 붙여넣습니다 (Cmd + V).</li>
+                    <li>
+                      오른쪽 위 <strong>[배포] &gt; [새 배포]</strong> 클릭 ➔ 유형: <strong>웹 앱</strong> ➔ 액세스: <strong>모든 사용자(Anyone)</strong> 선택 후 [배포]!
+                    </li>
                   </ol>
+
                   <button
                     type="button"
                     onClick={handleCopyScript}
-                    className="w-full py-2 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 rounded-lg font-bold flex items-center justify-center gap-1.5 transition"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm cursor-pointer"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copied ? '스크립트 코드 복사 완료!' : 'Google Apps Script 코드 복사하기'}
+                    {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                    <span>{copied ? '✅ 복사 완료! Apps Script에 붙여넣으세요' : 'Apps Script 코드 원클릭 복사하기'}</span>
                   </button>
+
+                  <div className="flex flex-col gap-1 mt-1">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      (원클릭 복사가 안 될 경우 아래 상자 클릭 ➔ Cmd+A ➔ Cmd+C):
+                    </span>
+                    <textarea
+                      readOnly
+                      value={GOOGLE_APPS_SCRIPT_TEMPLATE}
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                      className="w-full h-32 bg-slate-900 border border-slate-700 rounded p-2 text-[10px] font-mono text-emerald-400/90 focus:outline-none select-all"
+                    />
+                  </div>
                 </div>
               )}
             </div>
