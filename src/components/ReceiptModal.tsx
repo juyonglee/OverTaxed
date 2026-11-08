@@ -3,7 +3,18 @@ import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
 import { ShiftRecord } from '../types';
 import { formatKRW, formatDuration } from '../utils/calculator';
-import { X, CheckCircle2, AlertCircle, Share2, Download, Copy, Check, MessageSquare } from 'lucide-react';
+import {
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Share2,
+  Download,
+  Copy,
+  Check,
+  MessageSquare,
+  Smartphone,
+  Image as ImageIcon,
+} from 'lucide-react';
 
 interface ReceiptModalProps {
   record: ShiftRecord | null;
@@ -23,6 +34,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const receiptCardRef = useRef<HTMLDivElement | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [isShareSheetOpen, setIsShareSheetOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -55,28 +67,56 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${formatKRW(unpaidAmt)}원 상당 기부 😭)\n` : ''}${record.breakDeductedMinutes > 0 ? `☕ 휴게시간: -${formatDuration(record.breakDeductedMinutes)} 공제\n` : ''}💰 최종 정산 수당: ₩${formatKRW(record.totalPay)}원
 (야근 택시 미터기로 칼같이 정산 완료!)`;
 
-  // 1. 🖼️ 이미지로 저장 및 모바일 카카오톡/메시지 직접 공유
-  const handleCaptureAndShareImage = async () => {
+  // 1. 🖼️ 영수증 이미지 파일 다운로드
+  const handleDownloadImage = async () => {
     if (!receiptCardRef.current || isCapturing) return;
     setIsCapturing(true);
 
     try {
       const canvas = await html2canvas(receiptCardRef.current, {
-        scale: 2, // 고해상도 레티나
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+      });
+
+      const fileName = `야근영수증_${record.date}_${startStr.replace(':', '')}.png`;
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setCopyFeedback('영수증 이미지가 저장되었습니다!');
+      setIsShareSheetOpen(false);
+      setTimeout(() => setCopyFeedback(null), 2500);
+    } catch {
+      alert('이미지 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // 2. 📱 모바일 네이티브 공유창 열기 (카카오톡, 메시지, 에어드랍 등)
+  const handleNativeShare = async () => {
+    if (!receiptCardRef.current) return;
+    setIsCapturing(true);
+
+    try {
+      const canvas = await html2canvas(receiptCardRef.current, {
+        scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
       });
 
       canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setIsCapturing(false);
-          return;
-        }
+        setIsCapturing(false);
+        if (!blob) return;
 
-        const fileName = `야근영수증_${record.date}_${startStr.replace(':', '')}.png`;
+        const fileName = `야근영수증_${record.date}.png`;
         const file = new File([blob], fileName, { type: 'image/png' });
 
-        // 모바일 브라우저의 Web Share API로 파일 직접 공유 (카카오톡, 메시지 등 선택창)
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({
@@ -84,43 +124,44 @@ ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${forma
               title: '오늘의 야근 수당 영수증 🐎',
               text: shareText,
             });
-            setIsCapturing(false);
+            setIsShareSheetOpen(false);
             return;
-          } catch {
-            // 사용자가 공유 창을 취소한 경우 다운로드로 대체 진행
-          }
+          } catch {}
         }
 
-        // 데스크톱 또는 Web Share 미지원 시 이미지 즉시 다운로드
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // 일반 텍스트 공유 fallback
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: '오늘의 야근 수당 영수증 🐎',
+              text: shareText,
+            });
+            setIsShareSheetOpen(false);
+            return;
+          } catch {}
+        }
 
-        setCopyFeedback('영수증 이미지가 저장되었습니다!');
-        setTimeout(() => setCopyFeedback(null), 2500);
-        setIsCapturing(false);
+        // 지원 안 되는 경우 이미지 다운로드로 대체
+        handleDownloadImage();
       }, 'image/png');
     } catch {
       setIsCapturing(false);
-      alert('이미지 생성 중 오류가 발생했습니다. 텍스트 복사를 이용해 주세요.');
+      handleCopyText();
     }
   };
 
-  // 2. 💬 카카오톡 / 문자 붙여넣기용 텍스트 복사
+  // 3. 💬 카카오톡 붙여넣기용 텍스트 복사
   const handleCopyText = () => {
     navigator.clipboard.writeText(shareText);
-    setCopyFeedback('영수증 텍스트가 복사되었습니다! 카톡에 붙여넣기(Cmd+V)하세요.');
+    setCopyFeedback('카톡용 영수증 텍스트가 복사되었습니다! 붙여넣기(Cmd+V)하세요.');
+    setIsShareSheetOpen(false);
     setTimeout(() => setCopyFeedback(null), 3000);
   };
 
-  // 3. 📱 모바일 문자(SMS) 앱 열기
+  // 4. ✉️ 문자(SMS) 앱 열기
   const handleOpenSMS = () => {
     const encoded = encodeURIComponent(shareText);
+    setIsShareSheetOpen(false);
     window.location.href = `sms:?body=${encoded}`;
   };
 
@@ -135,7 +176,7 @@ ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${forma
           <X className="w-5 h-5" />
         </button>
 
-        {/* 📸 캡처 대상 영수증 카드 영역 (receiptCardRef) */}
+        {/* 📸 캡처 대상 영수증 카드 영역 */}
         <div ref={receiptCardRef} className="bg-white p-3 rounded-xl flex flex-col gap-3">
           {/* 영수증 헤더 */}
           <div className="text-center border-b-2 border-dashed border-slate-300 pb-3">
@@ -246,43 +287,22 @@ ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${forma
           </div>
         )}
 
-        {/* 🚀 공유 & 이미지 저장 액션 버튼들 */}
+        {/* 🚀 메인 액션 버튼 */}
         <div className="flex flex-col gap-2 mt-1">
-          {/* 이미지 저장 & 공유 (카카오톡, 인스타, 이미지 다운로드) */}
+          {/* 공유하기 누르면 선택 팝업 열기 */}
           <button
             type="button"
-            onClick={handleCaptureAndShareImage}
-            disabled={isCapturing}
-            className="w-full py-2.5 px-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-400/20 transition active:scale-98"
+            onClick={() => setIsShareSheetOpen(true)}
+            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-400/20 transition active:scale-98 cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            {isCapturing ? '영수증 이미지 생성 중...' : '🖼️ 영수증 이미지 저장 / 카톡 공유'}
+            <Share2 className="w-4 h-4 stroke-[2.5]" />
+            <span>영수증 공유하기 (선택)</span>
           </button>
-
-          {/* 텍스트 복사 & 문자 공유 */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handleCopyText}
-              className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 transition active:scale-95"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              카톡 텍스트 복사
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenSMS}
-              className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 transition active:scale-95"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              문자로 보내기
-            </button>
-          </div>
 
           {/* 닫기 버튼 */}
           <button
             onClick={onClose}
-            className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition active:scale-98 shadow-md shadow-emerald-600/30 mt-1"
+            className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition active:scale-98 shadow-md shadow-emerald-600/30"
           >
             확인 (수고하셨습니다!)
           </button>
@@ -304,6 +324,118 @@ ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${forma
           )}
         </div>
       </div>
+
+      {/* 📋 공유 방식 선택 모달 (Action Sheet) */}
+      {isShareSheetOpen && (
+        <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100 flex flex-col gap-3 font-sans">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Share2 className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold">공유 방식 선택</h3>
+              </div>
+              <button
+                onClick={() => setIsShareSheetOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              오늘의 야근 수당 영수증을 어떻게 공유할까요?
+            </p>
+
+            <div className="flex flex-col gap-2 my-1">
+              {/* 1. 영수증 이미지 저장 */}
+              <button
+                type="button"
+                onClick={handleDownloadImage}
+                disabled={isCapturing}
+                className="w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 text-left transition active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white">
+                    🖼️ 영수증 이미지(PNG) 저장
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    선명한 택시 영수증 캡처 사진 다운로드
+                  </span>
+                </div>
+              </button>
+
+              {/* 2. 카카오톡/메시지 앱 직접 공유 */}
+              <button
+                type="button"
+                onClick={handleNativeShare}
+                disabled={isCapturing}
+                className="w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 text-left transition active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white">
+                    📱 스마트폰 공유창 열기
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    카카오톡, 문자, 에어드랍 앱 바로 선택
+                  </span>
+                </div>
+              </button>
+
+              {/* 3. 카카오톡 텍스트 복사 */}
+              <button
+                type="button"
+                onClick={handleCopyText}
+                className="w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 text-left transition active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-sky-500/20 text-sky-400 shrink-0">
+                  <Copy className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white">
+                    💬 카카오톡 텍스트 복사
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    단톡방이나 슬랙에 바로 붙여넣기
+                  </span>
+                </div>
+              </button>
+
+              {/* 4. 문자로 보내기 */}
+              <button
+                type="button"
+                onClick={handleOpenSMS}
+                className="w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 text-left transition active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400 shrink-0">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white">
+                    ✉️ 문자 메시지(SMS) 전송
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    기본 메시지 앱으로 영수증 바로 전송
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsShareSheetOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition mt-1"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
