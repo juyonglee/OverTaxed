@@ -36,6 +36,7 @@ export interface AppSettings {
   displayMode: 'stepped' | 'continuous'; // 'stepped': 30분마다 딱딱 증가 / 'continuous': 실시간 미터기처럼 부드럽게 증가
   testMode: boolean; // 시간 조작 테스트 모드 활성화 여부
   simulatedHour?: number; // 테스트용 가상 시각
+  dailyLimitHours: number; // 1일 야근 수당 인정 한도 (시간, 기본 4시간, 0이면 무제한)
   weeklyLimitHours: number; // 주간 야근 수당 인정 한도 (시간, 기본 12시간, 0이면 무제한)
   stopPayOnLimitReached: boolean; // 한도 초과 시 요금 계산 중단 (무급 봉사 모드)
   enforceBreakTime: boolean; // 4시간 근무 시 30분 휴식시간 의무 적용

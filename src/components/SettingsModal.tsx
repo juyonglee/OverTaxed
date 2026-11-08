@@ -34,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [localSettings, setLocalSettings] = useState<AppSettings>(() => ({
     ...settings,
+    dailyLimitHours: settings.dailyLimitHours ?? 4,
     soundSettings: settings.soundSettings || {
       master: settings.soundEnabled !== false,
       buttonBeep: true,
@@ -308,46 +309,100 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
 
-        {/* 4. 주간 야근 한도 설정 */}
-        <div className="flex flex-col gap-2 p-3 bg-slate-900 rounded-xl border border-slate-800">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-400" />
-            <div>
-              <div className="text-xs font-bold text-slate-200">
-                주간 야근 인정 한도 (일요일 자정 리셋)
+        {/* 4. 야근 한도 & 휴게시간 설정 */}
+        <div className="flex flex-col gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800">
+          {/* 1일 한도 */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400" />
+              <div>
+                <div className="text-xs font-bold text-slate-200">
+                  1일 최대 야근 인정 한도
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  4시간 근무 시 요금/인정시간 동결 및 꽁짜 노동(무급) 전환
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400">
-                초과 시 회사에서 돈 안 주는 주간 한도 시간
-              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="number"
+                min="0"
+                max="24"
+                value={localSettings.dailyLimitHours}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, dailyLimitHours: Number(e.target.value) || 0 })
+                }
+                className="w-20 bg-slate-950 border border-slate-700 rounded-lg py-1.5 px-3 text-sm text-rose-400 font-bold font-mono focus:outline-none focus:border-rose-400"
+                placeholder="4"
+              />
+              <span className="text-xs text-slate-300 font-mono">시간 / 일 (0이면 무제한)</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mt-1">
-            <input
-              type="number"
-              min="0"
-              max="52"
-              value={localSettings.weeklyLimitHours}
-              onChange={(e) =>
-                setLocalSettings({ ...localSettings, weeklyLimitHours: Number(e.target.value) || 0 })
-              }
-              className="w-24 bg-slate-950 border border-slate-700 rounded-lg py-1.5 px-3 text-sm text-amber-300 font-bold font-mono focus:outline-none focus:border-amber-400"
-              placeholder="12"
-            />
-            <span className="text-xs text-slate-300 font-mono">시간 / 주 (0이면 무제한)</span>
+          {/* 주간 한도 */}
+          <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <div>
+                <div className="text-xs font-bold text-slate-200">
+                  주간 야근 인정 한도 (일요일 자정 리셋)
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  초과 시 회사에서 돈 안 주는 주간 한도 시간
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="number"
+                min="0"
+                max="52"
+                value={localSettings.weeklyLimitHours}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, weeklyLimitHours: Number(e.target.value) || 0 })
+                }
+                className="w-20 bg-slate-950 border border-slate-700 rounded-lg py-1.5 px-3 text-sm text-amber-300 font-bold font-mono focus:outline-none focus:border-amber-400"
+                placeholder="12"
+              />
+              <span className="text-xs text-slate-300 font-mono">시간 / 주 (0이면 무제한)</span>
+            </div>
+
+            <label className="flex items-center gap-2 mt-1 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={localSettings.stopPayOnLimitReached}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, stopPayOnLimitReached: e.target.checked })
+                }
+                className="w-4 h-4 accent-rose-500 cursor-pointer"
+              />
+              <span className="text-rose-300">한도 초과 시 요금 계산 중단 (꽁짜 노동 모드)</span>
+            </label>
           </div>
 
-          <label className="flex items-center gap-2 mt-1 text-xs text-slate-300 cursor-pointer select-none">
+          {/* 4시간마다 30분 의무 휴식 */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+            <div className="flex items-center gap-2">
+              <Coffee className="w-4 h-4 text-sky-400" />
+              <div>
+                <div className="text-xs font-bold text-slate-200">4시간마다 30분 의무 휴게시간</div>
+                <div className="text-[10px] text-slate-400">
+                  근로기준법 휴게시간 적용 (30분간 요금 동결 및 꽁짜 노동 누적)
+                </div>
+              </div>
+            </div>
             <input
               type="checkbox"
-              checked={localSettings.stopPayOnLimitReached}
+              checked={localSettings.enforceBreakTime}
               onChange={(e) =>
-                setLocalSettings({ ...localSettings, stopPayOnLimitReached: e.target.checked })
+                setLocalSettings({ ...localSettings, enforceBreakTime: e.target.checked })
               }
-              className="w-4 h-4 accent-rose-500 cursor-pointer"
+              className="w-4 h-4 accent-sky-500 cursor-pointer"
             />
-            <span className="text-rose-300">한도 초과 시 요금 계산 중단 (무급 봉사 모드)</span>
-          </label>
+          </div>
         </div>
 
         {/* 5. Google Sheets 연동 */}

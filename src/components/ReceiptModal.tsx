@@ -64,7 +64,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 📅 일자: ${record.date} (${record.isWeekendOrHoliday ? '휴일근무' : '평일야근'})
 ⏱️ 시간: ${startStr} ~ ${endStr}
 ✅ 30분 단위 인정: ${formatDuration(record.settledMinutes)} (₩${formatKRW(record.totalPay)}원)
-${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${formatKRW(unpaidAmt)}원 상당 기부 😭)\n` : ''}${record.breakDeductedMinutes > 0 ? `☕ 휴게시간: -${formatDuration(record.breakDeductedMinutes)} 공제\n` : ''}💰 최종 정산 수당: ₩${formatKRW(record.totalPay)}원
+${unpaidMins > 0 ? `❤️ 꽁짜 노동 (무료봉사): ${unpaidMins}분 (약 ₩${formatKRW(unpaidAmt)}원 상당 기부 😭)\n` : ''}${record.breakDeductedMinutes > 0 ? `☕ 휴게시간 공제: -${formatDuration(record.breakDeductedMinutes)}\n` : ''}💰 최종 정산 수당: ₩${formatKRW(record.totalPay)}원
 (야근 택시 미터기로 칼같이 정산 완료!)`;
 
   // 1. 🖼️ 영수증 이미지 파일 다운로드
@@ -217,13 +217,15 @@ ${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${forma
 
             {/* 자투리 무료 봉사 기부 시간 & 금액 */}
             {unpaidMins > 0 && (
-              <div className="flex flex-col gap-0.5 bg-rose-50/70 p-1.5 rounded border border-rose-200/60 text-[11px]">
+              <div className="flex flex-col gap-0.5 bg-rose-50/70 p-2 rounded-lg border border-rose-200/70 text-[11px]">
                 <div className="flex justify-between text-rose-700 font-bold">
-                  <span>❤️ 회사 무료봉사 (자투리)</span>
+                  <span>❤️ 꽁짜 노동 (회사 무료 봉사)</span>
                   <span>{unpaidMins}분 (약 ₩{formatKRW(unpaidAmt)})</span>
                 </div>
-                <div className="text-[10px] text-rose-500 font-mono">
-                  ※ 30분을 못 채워 회사에 기부되었습니다 ({minsToNextBlock}분 부족 😭)
+                <div className="text-[10px] text-rose-600 font-mono">
+                  {record.breakDeductedMinutes > 0
+                    ? `※ 의무 휴게시간 ${record.breakDeductedMinutes}분 + 미인정 자투리가 합산되었습니다 😭`
+                    : `※ 30분을 못 채워 회사에 기부되었습니다 (${minsToNextBlock}분 부족 😭)`}
                 </div>
               </div>
             )}

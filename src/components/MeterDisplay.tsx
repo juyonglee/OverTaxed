@@ -10,6 +10,7 @@ interface MeterDisplayProps {
   hourlyRate: number;
   currentDisplayTime: Date;
   startTimeDate?: Date | null;
+  dailyLimitHours?: number;
   weeklyMinutes: number;
   weeklyLimitHours: number;
   stopPayOnLimit: boolean;
@@ -28,6 +29,7 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
   hourlyRate,
   currentDisplayTime,
   startTimeDate,
+  dailyLimitHours = 4,
   weeklyMinutes,
   weeklyLimitHours,
   stopPayOnLimit,
@@ -91,25 +93,25 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
       {calc.isBreakTime ? (
         <div className="py-1.5 px-2 text-center rounded-lg font-bold text-xs bg-sky-500 text-black shadow-glow-green font-black flex items-center justify-center gap-1.5 animate-pulse">
           <Coffee className="w-3 h-3" />
-          휴 식 (30분)
+          휴식 (동결)
         </div>
       ) : (
         <div
           className={`py-1.5 px-2 text-center rounded-lg font-bold text-xs transition-all duration-300 flex items-center justify-center gap-1.5 ${
-            status === 'DRIVING' && !calc.isSurcharge && !isOverWeeklyLimit
+            status === 'DRIVING' && !calc.isSurcharge && !isOverWeeklyLimit && !calc.isDailyLimitReached
               ? 'bg-emerald-500 text-black shadow-glow-green font-black'
               : 'bg-emerald-950/20 text-emerald-800/40'
           }`}
         >
-          <span className={`w-2 h-2 rounded-full ${status === 'DRIVING' && !calc.isSurcharge && !isOverWeeklyLimit ? 'bg-black animate-ping' : 'bg-transparent'}`} />
+          <span className={`w-2 h-2 rounded-full ${status === 'DRIVING' && !calc.isSurcharge && !isOverWeeklyLimit && !calc.isDailyLimitReached ? 'bg-black animate-ping' : 'bg-transparent'}`} />
           주 행
         </div>
       )}
 
-      {isOverWeeklyLimit ? (
+      {isOverWeeklyLimit || (calc.isDailyLimitReached && stopPayOnLimit) ? (
         <div className="py-1.5 px-2 text-center rounded-lg font-bold text-[11px] bg-rose-600 text-white shadow-glow-red animate-pulse flex items-center justify-center gap-1">
           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-          무급 봉사🚨
+          꽁짜 노동🚨
         </div>
       ) : (
         <div
@@ -139,11 +141,13 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
       <div className="w-full flex justify-between items-center text-xs font-mono text-emerald-600/70 mb-1 z-10">
         <span>FARE / 수당</span>
         <span className="flex items-center gap-1">
-          {status === 'DRIVING' && (
+          {status === 'DRIVING' && !calc.isBreakTime && (
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
           )}
           {calc.isBreakTime
-            ? '☕ 4시간 근무 의무 휴식 중 (요금 정지)'
+            ? '☕ 4시간 휴식 (요금 동결 중)'
+            : calc.isDailyLimitReached && stopPayOnLimit
+            ? '🚨 1일 한도(4시간) 도달 (꽁짜 노동)'
             : isOverWeeklyLimit
             ? '주간 한도 초과 (열정페이)'
             : calc.isSurcharge
@@ -160,7 +164,7 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
           className={`font-digital text-5xl sm:text-6xl tracking-tight font-black transition-all ${
             calc.isBreakTime
               ? 'text-sky-300 drop-shadow-[0_0_15px_rgba(56,189,248,0.6)]'
-              : isOverWeeklyLimit && stopPayOnLimit
+              : (isOverWeeklyLimit || calc.isDailyLimitReached) && stopPayOnLimit
               ? 'text-rose-500 drop-shadow-[0_0_15px_rgba(244,63,94,0.6)]'
               : calc.isSurcharge
               ? 'text-amber-400 drop-shadow-[0_0_15px_rgba(255,170,0,0.6)]'
@@ -183,13 +187,13 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
 
   // 3. ☕ 4시간 의무 휴식시간 배너
   const breakBannerElement = status === 'DRIVING' && calc.isBreakTime && (
-    <div className="p-3 bg-sky-950/40 border border-sky-400/50 rounded-xl flex flex-col gap-1.5 text-xs font-mono text-sky-200">
+    <div className="p-3 bg-sky-950/50 border border-sky-400/60 rounded-xl flex flex-col gap-1.5 text-xs font-mono text-sky-200 shadow-md">
       <div className="flex justify-between items-center">
         <span className="font-bold flex items-center gap-1.5 text-sky-300">
           <Coffee className="w-4 h-4 text-sky-400 animate-bounce" />
-          법정 30분 의무 휴게시간 (근로기준법)
+          법정 30분 의무 휴게시간 (요금 동결 중)
         </span>
-        <span className="font-bold text-sky-400">
+        <span className="font-bold text-sky-300">
           {String(breakRemMin).padStart(2, '0')}:{String(breakRemSec).padStart(2, '0')} 남음
         </span>
       </div>
@@ -199,9 +203,47 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
           style={{ width: `${Math.min(100, Math.max(0, (calc.breakRemainingSeconds / 1800) * 100))}%` }}
         />
       </div>
-      <p className="text-[10px] text-sky-300/70">
-        4시간 근무 후 30분간은 휴게시간으로 요금이 일시 정지됩니다. 휴식 후 자동으로 주행이 재개됩니다!
+      <p className="text-[11px] text-sky-200/90 leading-relaxed">
+        ☕ 4시간 근무로 30분간 야근비와 인정시간이 <strong>완전 동결</strong>됩니다. 현재 근무는 <strong>회사를 위한 꽁짜 노동(무료 봉사)</strong>으로 실시간 집계됩니다!
       </p>
+    </div>
+  );
+
+  // 3-1. 🚨 1일 야근 한도(4시간) 도달 배너
+  const dailyLimitBannerElement = status === 'DRIVING' && calc.isDailyLimitReached && stopPayOnLimit && !calc.isBreakTime && (
+    <div className="p-3 bg-rose-950/50 border border-rose-500/60 rounded-xl flex flex-col gap-1 text-xs font-mono text-rose-200 shadow-md">
+      <div className="flex justify-between items-center font-bold text-rose-300">
+        <span className="flex items-center gap-1.5">
+          <AlertTriangle className="w-4 h-4 text-rose-400 animate-pulse" />
+          1일 최대 야근 한도(4시간) 도달
+        </span>
+        <span className="text-rose-400">요금 동결</span>
+      </div>
+      <p className="text-[11px] text-rose-200/80 mt-0.5">
+        1일 연장근로 한도(4시간)를 채웠습니다. 지금부터의 모든 추가 근무는 100% 꽁짜 노동(무급 봉사)으로 기록됩니다!
+      </p>
+    </div>
+  );
+
+  // 3-2. ❤️ 꽁짜 노동 (무료 봉사) 실시간 누적 박스
+  const unpaidElement = status === 'DRIVING' && calc.unpaidMinutes > 0 && (
+    <div className="p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 to-rose-950/40 border border-rose-500/40 rounded-xl flex items-center justify-between gap-2 shadow-sm font-mono text-xs">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-400 font-black text-xs border border-rose-500/30 whitespace-nowrap shrink-0 flex items-center gap-1">
+          ❤️ 꽁짜 노동
+        </div>
+        <div className="text-slate-300 font-bold truncate">
+          <span>{formatDuration(calc.unpaidMinutes)}</span>
+          {calc.breakDeductedMinutes > 0 && (
+            <span className="text-[10px] text-rose-300/80 font-normal ml-1">
+              (휴게 {calc.breakDeductedMinutes}분)
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="text-rose-400 font-bold whitespace-nowrap text-right">
+        약 ₩{formatKRW(calc.unpaidAmount)} 기부 중 😭
+      </div>
     </div>
   );
 
@@ -345,11 +387,19 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
             <Clock className="w-3 h-3 text-cyan-400 shrink-0" />
             야근 인정 시간
           </span>
-          {startTimeStr && (
+          {calc.isBreakTime ? (
+            <span className="text-[10px] text-sky-400 font-bold whitespace-nowrap">
+              ☕ 휴식 중 동결
+            </span>
+          ) : (calc.isDailyLimitReached && stopPayOnLimit) ? (
+            <span className="text-[10px] text-rose-400 font-bold whitespace-nowrap">
+              🔒 4시간 한도 정지
+            </span>
+          ) : startTimeStr ? (
             <span className="text-[10px] text-slate-500 whitespace-nowrap">
               시작 {startTimeStr}
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className="text-xl sm:text-2xl font-bold text-cyan-300 font-digital tracking-tight">
@@ -361,7 +411,12 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
             calc.isBreakTime ? (
               <span className="text-sky-300 font-bold flex items-center gap-1">
                 <Coffee className="w-3 h-3 shrink-0" />
-                휴식 중
+                4시간 의무 휴식 중 (인정시간 정지)
+              </span>
+            ) : (calc.isDailyLimitReached && stopPayOnLimit) ? (
+              <span className="text-rose-400 font-bold flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                1일 한도({dailyLimitHours}시간) 도달로 꽁짜 노동 중
               </span>
             ) : (
               <span className="text-slate-400 flex items-center gap-1">
@@ -427,6 +482,8 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
             {lampsElement}
             {ledElement}
             {breakBannerElement}
+            {dailyLimitBannerElement}
+            {unpaidElement}
             {countdownElement}
             {weeklyLimitElement}
             {tollBarElement}
@@ -438,24 +495,26 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
 
         {/* 데스크탑 / 가로(Landscape) 뷰: 좌우 높이가 1:1로 완벽하게 균형 잡힌 2열 콕핏 */}
         <div className="hidden md:grid md:grid-cols-2 md:gap-4 md:items-start">
-          {/* [좌측 컬럼]: 말 달리기 + 램프 + 인정시간/시급 + 통행료 + 주간한도 */}
+          {/* [좌측 컬럼]: 말 달리기 + 램프 + 인정시간/시급 + 꽁짜노동 + 통행료 + 주간한도 */}
           <div className="flex flex-col gap-3.5">
             {horseSlot}
             <div className="rounded-2xl bg-gradient-to-b from-meter-card to-meter-dark border-2 border-slate-700/80 p-4 shadow-2xl flex flex-col gap-3.5">
               {lampsElement}
               {infoPanelElement}
+              {unpaidElement}
               {tollBarElement}
               {weeklyLimitElement}
               {preparingAlertElement}
             </div>
           </div>
 
-          {/* [우측 컬럼]: 대형 LED 요금판 + 카운트다운 + 휴식배너 + 대형 액션 버튼 */}
+          {/* [우측 컬럼]: 대형 LED 요금판 + 카운트다운 + 휴식배너/한도배너 + 대형 액션 버튼 */}
           <div className="flex flex-col gap-3.5">
             <div className="rounded-2xl bg-gradient-to-b from-meter-card to-meter-dark border-2 border-slate-700/80 p-4 shadow-2xl flex flex-col gap-3.5">
               {ledElement}
               {countdownElement}
               {breakBannerElement}
+              {dailyLimitBannerElement}
             </div>
             {actionSlot}
           </div>
@@ -470,6 +529,8 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
       {lampsElement}
       {ledElement}
       {breakBannerElement}
+      {dailyLimitBannerElement}
+      {unpaidElement}
       {countdownElement}
       {weeklyLimitElement}
       {tollBarElement}

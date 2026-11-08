@@ -20,6 +20,7 @@ interface StandbyHudProps {
   hourlyRate: number;
   currentTime: Date;
   startTimeDate: Date | null;
+  dailyLimitHours?: number;
   weeklyMinutes: number;
   weeklyLimitHours: number;
   stopPayOnLimit: boolean;
@@ -44,6 +45,7 @@ export const StandbyHud: React.FC<StandbyHudProps> = ({
   hourlyRate,
   currentTime,
   startTimeDate,
+  dailyLimitHours = 4,
   weeklyMinutes,
   weeklyLimitHours,
   stopPayOnLimit,
@@ -206,6 +208,7 @@ export const StandbyHud: React.FC<StandbyHudProps> = ({
           hourlyRate={hourlyRate}
           currentDisplayTime={currentTime}
           startTimeDate={startTimeDate}
+          dailyLimitHours={dailyLimitHours}
           weeklyMinutes={weeklyMinutes}
           weeklyLimitHours={weeklyLimitHours}
           stopPayOnLimit={stopPayOnLimit}
