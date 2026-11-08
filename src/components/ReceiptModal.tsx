@@ -8,6 +8,7 @@ interface ReceiptModalProps {
   record: ShiftRecord | null;
   isOpen: boolean;
   onClose: () => void;
+  onDelete?: (id: string) => void;
   syncStatus?: { success: boolean; message: string } | null;
 }
 
@@ -15,6 +16,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   record,
   isOpen,
   onClose,
+  onDelete,
   syncStatus,
 }) => {
   useEffect(() => {
@@ -148,21 +150,38 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         )}
 
-        {/* 하단 공유 & 확인 버튼 */}
-        <div className="grid grid-cols-2 gap-2 mt-1">
-          <button
-            onClick={handleShare}
-            className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            영수증 공유
-          </button>
-          <button
-            onClick={onClose}
-            className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-emerald-600/30"
-          >
-            확인 (수고하셨습니다!)
-          </button>
+        {/* 하단 공유 & 확인 & 삭제 버튼 */}
+        <div className="flex flex-col gap-2 mt-1">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleShare}
+              className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              영수증 공유
+            </button>
+            <button
+              onClick={onClose}
+              className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-emerald-600/30"
+            >
+              확인 (수고하셨습니다!)
+            </button>
+          </div>
+
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('방금 저장된 이 야근 기록을 정말 삭제하시겠습니까?')) {
+                  onDelete(record.id);
+                  onClose();
+                }
+              }}
+              className="text-[11px] text-rose-500 hover:text-rose-600 hover:underline py-1 text-center transition"
+            >
+              🗑️ 이 야근 기록 삭제하기 (잘못 저장했을 때)
+            </button>
+          )}
         </div>
       </div>
     </div>

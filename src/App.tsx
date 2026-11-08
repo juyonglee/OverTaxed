@@ -233,6 +233,15 @@ export const App: React.FC = () => {
     }
   }, [taxiStatus, currentCalc.settledBlocks, currentCalc.isSurcharge, currentCalc.isBreakTime]);
 
+  // [영업 취소 (기록 없이 리셋)] 핸들러
+  const handleCancelShift = () => {
+    if (!activeShift) return;
+    if (confirm('현재 주행 중인 야근을 저장하지 않고 취소하시겠습니까?')) {
+      soundFx.playBeep();
+      setActiveShift(null);
+    }
+  };
+
   // [영업 시작] 핸들러
   const handleStartShift = () => {
     soundFx.playStartDrive();
@@ -517,13 +526,23 @@ export const App: React.FC = () => {
                   <span>영 업 시 작 (주행 출발 🐎)</span>
                 </button>
               ) : (
-                <button
-                  onClick={handleEndShift}
-                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
-                >
-                  <Square className="w-5 h-5 fill-current" />
-                  <span>영 업 종 료 (지불 / 정산 🧾)</span>
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleEndShift}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
+                  >
+                    <Square className="w-5 h-5 fill-current" />
+                    <span>영 업 종 료 (지불 / 정산 🧾)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelShift}
+                    className="text-xs text-slate-500 hover:text-rose-400 py-1 text-center transition flex items-center justify-center gap-1"
+                  >
+                    ❌ 잘못 시작했나요? (기록 없이 영업 취소)
+                  </button>
+                </div>
               )}
 
               {/* 하단 보조 안내 팁 */}
@@ -565,6 +584,7 @@ export const App: React.FC = () => {
         record={receiptRecord}
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
+        onDelete={(id) => setRecords((prev) => prev.filter((r) => r.id !== id))}
         syncStatus={syncStatus}
       />
     </div>
