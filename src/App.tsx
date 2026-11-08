@@ -9,7 +9,11 @@ import {
   CalculationResult,
 } from './utils/calculator';
 import { soundFx } from './utils/audio';
-import { syncRecordToGoogleSheets } from './utils/googleSheets';
+import {
+  syncRecordToGoogleSheets,
+  syncActiveShiftToCloud,
+  fetchCloudState,
+} from './utils/googleSheets';
 import { HorseAnimation } from './components/HorseAnimation';
 import { MeterDisplay } from './components/MeterDisplay';
 import { ReceiptModal } from './components/ReceiptModal';
@@ -88,12 +92,71 @@ export const App: React.FC = () => {
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [isManualHoliday, setIsManualHoliday] = useState<boolean>(false);
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
 
   // 시계 및 실시간 계산 결과
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const prevSettledBlocksRef = useRef<number>(0);
   const prevSurchargeRef = useRef<boolean>(false);
   const prevBreakTimeRef = useRef<boolean>(false);
+
+  // 구글 클라우드 기기 간 실시간 동기화 함수
+  const pollCloudSync = useCallback(async () => {
+    if (!settings.useGoogleSheets || !settings.googleScriptUrl) {
+      setIsCloudSynced(false);
+      return;
+    }
+
+    const res = await fetchCloudState(settings.googleScriptUrl);
+    if (res.success) {
+      setIsCloudSynced(true);
+      // 1. 클라우드에 주행 중인 상태가 있으면 로컬 동기화
+      if (res.activeShift) {
+        setActiveShift((currentLocal) => {
+          // 로컬과 시작 시각이 다르거나 로컬이 빈차인 경우 클라우드 상태 적용
+          if (
+            !currentLocal ||
+            currentLocal.startTime !== res.activeShift?.startTime ||
+            currentLocal.manualBonusBlocks !== res.activeShift?.manualBonusBlocks
+          ) {
+            return res.activeShift;
+          }
+          return currentLocal;
+        });
+      } else {
+        // 클라우드에서 이미 영업 종료/취소되었는데 로컬에 남아있으면 종료 반영
+        setActiveShift((currentLocal) => {
+          if (currentLocal && currentLocal.originalStartTime) {
+            return null; // 클라우드에서 종료됨
+          }
+          return currentLocal;
+        });
+      }
+
+      // 2. 클라우드 기록 목록 병합
+      if (res.records && res.records.length > 0) {
+        setRecords((prevRecords) => {
+          const map = new Map<string, ShiftRecord>();
+          prevRecords.forEach((r) => map.set(r.id, r));
+          res.records.forEach((r) => map.set(r.id, r));
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+          );
+        });
+      }
+    } else {
+      setIsCloudSynced(false);
+    }
+  }, [settings.useGoogleSheets, settings.googleScriptUrl]);
+
+  // 마운트 시 및 주기적(8초) 클라우드 동기화
+  useEffect(() => {
+    pollCloudSync();
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      const interval = setInterval(pollCloudSync, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [pollCloudSync, settings.useGoogleSheets, settings.googleScriptUrl]);
 
   // 사운드 세부 설정 동기화
   useEffect(() => {
@@ -132,16 +195,17 @@ export const App: React.FC = () => {
     return now;
   }, [settings.testMode, settings.simulatedHour]);
 
-  // 화면 복귀(모바일 화면 켜짐/앱 전환) 시 즉시 시간 동기화
+  // 화면 복귀(모바일 화면 켜짐/앱 전환) 시 즉시 시간 및 클라우드 동기화
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         setCurrentTime(getEffectiveCurrentTime());
+        pollCloudSync();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [getEffectiveCurrentTime]);
+  }, [getEffectiveCurrentTime, pollCloudSync]);
 
   // 1초마다 시계 갱신 및 요금 인상 체크
   useEffect(() => {
@@ -241,6 +305,11 @@ export const App: React.FC = () => {
     if (confirm('현재 주행 중인 야근을 저장하지 않고 취소하시겠습니까?')) {
       soundFx.playBeep();
       setActiveShift(null);
+
+      // 클라우드 주행 상태도 즉시 취소/삭제 동기화
+      if (settings.useGoogleSheets && settings.googleScriptUrl) {
+        syncActiveShiftToCloud(settings.googleScriptUrl, null);
+      }
     }
   };
 
@@ -250,12 +319,19 @@ export const App: React.FC = () => {
     const startTimeDate = getEffectiveCurrentTime();
     const isHoliday = isWeekend(startTimeDate) || isManualHoliday;
 
-    setActiveShift({
+    const newShift = {
       startTime: startTimeDate.toISOString(),
       originalStartTime: startTimeDate.toISOString(),
       isHoliday,
       manualBonusBlocks: 0,
-    });
+    };
+
+    setActiveShift(newShift);
+
+    // 클라우드에 주행 시작 상태 실시간 전송
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      syncActiveShiftToCloud(settings.googleScriptUrl, newShift);
+    }
   };
 
   // 수동 30분 추가 (시계 기준 00분 / 30분 정각으로 스냅하여 앞당김!)
@@ -263,7 +339,6 @@ export const App: React.FC = () => {
     if (!activeShift) return;
     soundFx.playSettlementSound();
 
-    // originalStartTime이 없으면 (구버전 데이터) 현재 시각 또는 현재 startTime 역산으로 안전하게 설정
     const origTimeStr =
       activeShift.originalStartTime ||
       new Date(
@@ -274,21 +349,23 @@ export const App: React.FC = () => {
     const origTime = new Date(origTimeStr);
     const prevBoundary = getPrevClock30Min(origTime);
     const nextBonus = (activeShift.manualBonusBlocks || 0) + 1;
-    // prevBoundary에서 (nextBonus * 30분) 전 정각으로 스냅
     const snappedStartTime = new Date(
       prevBoundary.getTime() - nextBonus * 30 * 60 * 1000
     ).toISOString();
 
-    setActiveShift((prev) =>
-      prev
-        ? {
-            ...prev,
-            originalStartTime: origTimeStr,
-            startTime: snappedStartTime,
-            manualBonusBlocks: nextBonus,
-          }
-        : null
-    );
+    const updatedShift = {
+      ...activeShift,
+      originalStartTime: origTimeStr,
+      startTime: snappedStartTime,
+      manualBonusBlocks: nextBonus,
+    };
+
+    setActiveShift(updatedShift);
+
+    // 클라우드 동기화
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      syncActiveShiftToCloud(settings.googleScriptUrl, updatedShift);
+    }
   };
 
   // 수동 30분 차감 (취소 시 이전 정각 또는 원래 시각으로 100% 복원)
@@ -305,18 +382,14 @@ export const App: React.FC = () => {
 
     const nextBonus = activeShift.manualBonusBlocks - 1;
 
+    let updatedShift = null;
     if (nextBonus <= 0) {
-      // 0회가 되면 원래 켰던 시각으로 100% 완전 원복!
-      setActiveShift((prev) =>
-        prev
-          ? {
-              ...prev,
-              originalStartTime: origTimeStr,
-              startTime: origTimeStr,
-              manualBonusBlocks: 0,
-            }
-          : null
-      );
+      updatedShift = {
+        ...activeShift,
+        originalStartTime: origTimeStr,
+        startTime: origTimeStr,
+        manualBonusBlocks: 0,
+      };
     } else {
       const origTime = new Date(origTimeStr);
       const prevBoundary = getPrevClock30Min(origTime);
@@ -324,16 +397,19 @@ export const App: React.FC = () => {
         prevBoundary.getTime() - nextBonus * 30 * 60 * 1000
       ).toISOString();
 
-      setActiveShift((prev) =>
-        prev
-          ? {
-              ...prev,
-              originalStartTime: origTimeStr,
-              startTime: snappedStartTime,
-              manualBonusBlocks: nextBonus,
-            }
-          : null
-      );
+      updatedShift = {
+        ...activeShift,
+        originalStartTime: origTimeStr,
+        startTime: snappedStartTime,
+        manualBonusBlocks: nextBonus,
+      };
+    }
+
+    setActiveShift(updatedShift);
+
+    // 클라우드 동기화
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      syncActiveShiftToCloud(settings.googleScriptUrl, updatedShift);
     }
   };
 
@@ -405,6 +481,19 @@ export const App: React.FC = () => {
               <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
                 OverTaxed
               </span>
+              {settings.useGoogleSheets && settings.googleScriptUrl && (
+                <span
+                  className={`text-[9px] px-1.5 py-0.2 rounded font-mono flex items-center gap-0.5 ${
+                    isCloudSynced
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  }`}
+                  title="기기 간 실시간 주행 동기화 활성화됨 (Mac ↔ iPhone)"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isCloudSynced ? 'bg-sky-400 animate-pulse' : 'bg-amber-400'}`} />
+                  {isCloudSynced ? '클라우드 동기화' : '동기화 연결중'}
+                </span>
+              )}
             </h1>
             <p className="text-[10px] text-slate-500 font-mono">
               실시간 야근 수당 계산 & Google Sheets 연동
