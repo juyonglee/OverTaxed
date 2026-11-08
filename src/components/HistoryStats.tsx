@@ -27,7 +27,9 @@ export const HistoryStats: React.FC<HistoryStatsProps> = ({
     const todayStr = now.toISOString().split('T')[0];
 
     return records.filter((r) => {
-      const recordDate = new Date(r.date);
+      const recordDate = new Date(r.startTime || r.date);
+      if (isNaN(recordDate.getTime())) return false;
+
       if (period === 'today') {
         return r.date === todayStr;
       }
@@ -251,16 +253,24 @@ export const HistoryStats: React.FC<HistoryStatsProps> = ({
         ) : (
           <div className="flex flex-col gap-2 max-h-[360px] overflow-y-auto pr-1">
             {filteredRecords.map((r) => {
-              const startStr = new Date(r.startTime).toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-              });
-              const endStr = new Date(r.endTime).toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-              });
+              const startDate = new Date(r.startTime);
+              const endDate = new Date(r.endTime);
+
+              const startStr = !isNaN(startDate.getTime())
+                ? startDate.toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })
+                : '시작';
+
+              const endStr = !isNaN(endDate.getTime())
+                ? endDate.toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })
+                : '종료';
 
               return (
                 <div

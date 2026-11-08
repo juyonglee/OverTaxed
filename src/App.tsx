@@ -139,9 +139,11 @@ export const App: React.FC = () => {
           const map = new Map<string, ShiftRecord>();
           prevRecords.forEach((r) => map.set(r.id, r));
           res.records.forEach((r) => map.set(r.id, r));
-          return Array.from(map.values()).sort(
-            (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-          );
+          return Array.from(map.values()).sort((a, b) => {
+            const timeA = new Date(a.startTime).getTime() || 0;
+            const timeB = new Date(b.startTime).getTime() || 0;
+            return timeB - timeA;
+          });
         });
       }
     } else {
@@ -228,11 +230,14 @@ export const App: React.FC = () => {
     taxiStatus = 'PREPARING';
   }
 
-  // 일요일 00:00:00 기준 이번 주 누적 완료된 야근 시간(분) 계산
+  // 일요일 00:00:00 기준 이번 주 누적 완료된 야근 시간(분) 계산 (Invalid Date 방어)
   const sundayStart = getSundayStartOfWeek(effectiveNow).getTime();
   const priorWeeklyMinutes = records
-    .filter((r) => new Date(r.startTime).getTime() >= sundayStart)
-    .reduce((sum, r) => sum + r.settledMinutes, 0);
+    .filter((r) => {
+      const d = new Date(r.startTime);
+      return !isNaN(d.getTime()) && d.getTime() >= sundayStart;
+    })
+    .reduce((sum, r) => sum + (Number(r.settledMinutes) || 0), 0);
 
   // 실시간 야근 수당 계산
   const currentCalc: CalculationResult = activeShift

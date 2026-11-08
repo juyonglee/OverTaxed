@@ -21,8 +21,18 @@ export interface CalculationResult {
   unpaidAmount: number; // 무료 봉사 환산액 (원)
 }
 
+/**
+ * 안전한 Date 객체 생성 헬퍼 (Invalid Date 방지)
+ */
+export function safeDate(val: string | number | Date | undefined | null, fallback: Date = new Date()): Date {
+  if (!val) return fallback;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? fallback : d;
+}
+
 export function isWeekend(date: Date): boolean {
-  const day = date.getDay();
+  const safeD = safeDate(date);
+  const day = safeD.getDay();
   return day === 0 || day === 6; // 일요일(0), 토요일(6)
 }
 
@@ -30,8 +40,9 @@ export function isWeekend(date: Date): boolean {
  * 평일 20시 이전인지 확인 (영업 준비중 여부)
  */
 export function isWeekdayBeforeOpening(now: Date): boolean {
-  if (isWeekend(now)) return false;
-  const hours = now.getHours();
+  const safeNow = safeDate(now);
+  if (isWeekend(safeNow)) return false;
+  const hours = safeNow.getHours();
   return hours < 20 && hours >= 6; // 새벽 퇴근 고려: 아침 6시부터 저녁 8시 전까지는 영업 준비중
 }
 
@@ -39,7 +50,7 @@ export function isWeekdayBeforeOpening(now: Date): boolean {
  * 일요일 기준 이번 주 시작 시각(일요일 00:00:00) 구하기
  */
 export function getSundayStartOfWeek(referenceDate: Date): Date {
-  const sunday = new Date(referenceDate);
+  const sunday = new Date(safeDate(referenceDate));
   const day = sunday.getDay(); // 0 is Sunday
   sunday.setDate(sunday.getDate() - day);
   sunday.setHours(0, 0, 0, 0);
@@ -50,7 +61,7 @@ export function getSundayStartOfWeek(referenceDate: Date): Date {
  * 다음 시계 기준 30분 정각(:00 or :30)을 계산
  */
 export function getNextClock30Min(date: Date): Date {
-  const next = new Date(date);
+  const next = new Date(safeDate(date));
   next.setSeconds(0, 0);
   const minutes = next.getMinutes();
   if (minutes < 30) {
@@ -66,7 +77,7 @@ export function getNextClock30Min(date: Date): Date {
  * 이전 시계 기준 30분 정각(:00 or :30)을 계산
  */
 export function getPrevClock30Min(date: Date): Date {
-  const prev = new Date(date);
+  const prev = new Date(safeDate(date));
   prev.setSeconds(0, 0);
   const minutes = prev.getMinutes();
   if (minutes < 30) {
@@ -78,7 +89,7 @@ export function getPrevClock30Min(date: Date): Date {
 }
 
 /**
- * 시계 기준(:00, :30) 및 4시간 30분 휴게시간 야근비 계산 엔진
+ * 시계 기준(:00, :30) 및 4시간 30분 휴게시간 야근비 계산 엔진 (Invalid Date 100% 방어)
  */
 export function calculateOvertimePay(
   startTime: Date,
@@ -91,14 +102,16 @@ export function calculateOvertimePay(
   stopPayOnLimit: boolean = false,
   enforceBreakTime: boolean = true // 4시간마다 30분 휴식 적용
 ): CalculationResult {
-  const startMs = startTime.getTime();
-  const currentMs = currentTime.getTime();
+  const validStart = safeDate(startTime);
+  const validCurrent = safeDate(currentTime);
+
+  const startMs = validStart.getTime();
+  const currentMs = validCurrent.getTime();
   const elapsedMs = Math.max(0, currentMs - startMs);
   const totalSeconds = Math.floor(elapsedMs / 1000);
   const totalMinutes = Math.floor(totalSeconds / 60);
 
   // ☕ 4시간(240분)마다 30분 휴식시간 판정
-  // 1주기 = 240분 근무 + 30분 휴식 = 270분 (4.5시간)
   let isBreakTime = false;
   let breakRemainingSeconds = 0;
   let minutesUntilNextBreak = 240;
@@ -108,20 +121,17 @@ export function calculateOvertimePay(
     const cycleMinutes = 270;
     const cycleSeconds = cycleMinutes * 60;
     const currentCycleSeconds = totalSeconds % cycleSeconds;
-    const workLimitSeconds = 240 * 60; // 4시간 (14,400초)
+    const workLimitSeconds = 240 * 60;
 
-    // 전체 지난 완료 사이클 수
     const fullCycles = Math.floor(totalSeconds / cycleSeconds);
     breakDeductedMinutes = fullCycles * 30;
 
     if (currentCycleSeconds >= workLimitSeconds) {
-      // 4시간 근무 초과 후 30분 휴식 구간 진입!
       isBreakTime = true;
       breakRemainingSeconds = cycleSeconds - currentCycleSeconds;
       minutesUntilNextBreak = 0;
       breakDeductedMinutes += Math.floor((currentCycleSeconds - workLimitSeconds) / 60);
     } else {
-      // 아직 4시간 근무 중
       isBreakTime = false;
       minutesUntilNextBreak = Math.ceil((workLimitSeconds - currentCycleSeconds) / 60);
     }
@@ -130,10 +140,10 @@ export function calculateOvertimePay(
   const pureWorkMinutes = Math.max(0, totalMinutes - breakDeductedMinutes);
 
   // 시계 기준 다음 30분 인상 시각 (:00 또는 :30)
-  const nextBlockTime = getNextClock30Min(currentTime);
-  const prevBlockTime = getPrevClock30Min(currentTime);
+  const nextBlockTime = getNextClock30Min(validCurrent);
+  const prevBlockTime = getPrevClock30Min(validCurrent);
 
-  const blockTotalSeconds = Math.floor((nextBlockTime.getTime() - prevBlockTime.getTime()) / 1000);
+  const blockTotalSeconds = Math.max(1, Math.floor((nextBlockTime.getTime() - prevBlockTime.getTime()) / 1000));
   const remainingSecondsToNextBlock = Math.max(
     0,
     Math.floor((nextBlockTime.getTime() - currentMs) / 1000)
@@ -141,17 +151,19 @@ export function calculateOvertimePay(
   const currentBlockSeconds = Math.max(0, blockTotalSeconds - remainingSecondsToNextBlock);
   const currentBlockProgress = Math.min(1, Math.max(0, currentBlockSeconds / blockTotalSeconds));
 
-  const isWeekendShift = isHolidayMode || isWeekend(startTime);
+  const isWeekendShift = isHolidayMode || isWeekend(validStart);
 
   let clockCrossedBlocks = 0;
-  let cursor = getNextClock30Min(startTime);
+  let cursor = getNextClock30Min(validStart);
 
-  while (cursor.getTime() <= currentMs) {
+  // 무한 루프 방지 max 1000 블록
+  let loopCount = 0;
+  while (cursor.getTime() <= currentMs && loopCount < 1000) {
     clockCrossedBlocks++;
     cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
+    loopCount++;
   }
 
-  // 휴식 시간(30분 단위)은 정산 블록에서 제외
   const breakBlocks = Math.floor(breakDeductedMinutes / 30);
   const settledBlocks = Math.max(0, clockCrossedBlocks - breakBlocks);
 
@@ -160,7 +172,6 @@ export function calculateOvertimePay(
   let nightOvertimeMinutes = 0;
 
   for (let i = 0; i < settledBlocks; i++) {
-    // 주간 한도 체크
     const blockCumulativeMinutes = weeklyPriorMinutes + (i + 1) * 30;
     const isExceedingLimit = weeklyLimitMinutes > 0 && blockCumulativeMinutes > weeklyLimitMinutes;
 
@@ -187,7 +198,6 @@ export function calculateOvertimePay(
       }
     }
 
-    // 한도 초과 시 무급 봉사면 0원 처리
     if (stopPayOnLimit && isExceedingLimit) {
       // 0원
     } else {
@@ -196,7 +206,7 @@ export function calculateOvertimePay(
     }
   }
 
-  const nowHour = currentTime.getHours();
+  const nowHour = validCurrent.getHours();
   let currentMultiplier = 1.5;
   if (isWeekendShift) {
     currentMultiplier = settledBlocks >= 16 ? 2.0 : 1.5;
@@ -204,7 +214,6 @@ export function calculateOvertimePay(
     currentMultiplier = nowHour >= 22 || nowHour < 8 ? 2.0 : 1.5;
   }
 
-  // 주간 한도 도달 여부
   const currentTotalWeekMinutes = weeklyPriorMinutes + pureWorkMinutes;
   const isWeeklyLimitReached = weeklyLimitMinutes > 0 && currentTotalWeekMinutes >= weeklyLimitMinutes;
 
@@ -214,7 +223,6 @@ export function calculateOvertimePay(
       ? settledPay
       : Math.round(settledPay + currentBlockAmount * currentBlockProgress);
 
-  // 30분 단위 못 채운 자투리 무료 봉사 시간 & 환산액 계산
   const settledMinutes = settledBlocks * 30;
   const unpaidMinutes = Math.max(0, pureWorkMinutes - settledMinutes);
   const unpaidAmount = Math.round(((hourlyRate * currentMultiplier) / 60) * unpaidMinutes);
@@ -244,10 +252,12 @@ export function calculateOvertimePay(
 }
 
 export function formatKRW(amount: number): string {
+  if (isNaN(amount) || amount === undefined || amount === null) return '0';
   return new Intl.NumberFormat('ko-KR').format(amount);
 }
 
 export function formatDuration(minutes: number): string {
+  if (isNaN(minutes) || minutes === undefined || minutes === null) return '0분';
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   if (hours === 0) return `${mins}분`;

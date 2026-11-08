@@ -175,7 +175,7 @@ function createJsonResponse(obj) {
 `;
 
 /**
- * 구글 클라우드에서 실시간 주행 상태 및 기록 조회 (기기간 동기화)
+ * 구글 클라우드에서 실시간 주행 상태 및 기록 조회 (기기간 동기화 & Invalid Date 100% 방어)
  */
 export async function fetchCloudState(scriptUrl: string): Promise<{
   success: boolean;
@@ -199,10 +199,70 @@ export async function fetchCloudState(scriptUrl: string): Promise<{
       throw new Error(`HTTP ${res.status}`);
     }
     const data = await res.json();
+
+    // 1. activeShift 유효성 검증 (Invalid Date 방지)
+    let validatedActiveShift = null;
+    if (data.activeShift && data.activeShift.startTime) {
+      const parsedStart = new Date(data.activeShift.startTime);
+      if (!isNaN(parsedStart.getTime())) {
+        validatedActiveShift = {
+          startTime: parsedStart.toISOString(),
+          originalStartTime: data.activeShift.originalStartTime
+            ? new Date(data.activeShift.originalStartTime).toISOString()
+            : parsedStart.toISOString(),
+          isHoliday: Boolean(data.activeShift.isHoliday),
+          manualBonusBlocks: Number(data.activeShift.manualBonusBlocks) || 0,
+        };
+      }
+    }
+
+    // 2. records의 startTime, endTime 안전 복원 (Invalid Date 방지)
+    const rawRecords = Array.isArray(data.records) ? data.records : [];
+    const validatedRecords: ShiftRecord[] = rawRecords.map((r: any, idx: number) => {
+      const dateStr = String(r.date || new Date().toISOString().split('T')[0]).trim();
+      const startTimeStr = String(r.startTimeStr || '00:00:00').trim();
+      const endTimeStr = String(r.endTimeStr || '00:00:00').trim();
+
+      // startTime 안전 파싱
+      let validStartTime = r.startTime;
+      if (!validStartTime || isNaN(new Date(validStartTime).getTime())) {
+        const timePart = startTimeStr.length === 5 ? `${startTimeStr}:00` : startTimeStr;
+        const candidate = new Date(`${dateStr}T${timePart}`);
+        validStartTime = isNaN(candidate.getTime()) ? new Date().toISOString() : candidate.toISOString();
+      }
+
+      // endTime 안전 파싱
+      let validEndTime = r.endTime;
+      if (!validEndTime || isNaN(new Date(validEndTime).getTime())) {
+        const timePart = endTimeStr.length === 5 ? `${endTimeStr}:00` : endTimeStr;
+        const candidate = new Date(`${dateStr}T${timePart}`);
+        validEndTime = isNaN(candidate.getTime()) ? validStartTime : candidate.toISOString();
+      }
+
+      return {
+        id: String(r.id || `cloud-${dateStr}-${idx}`),
+        date: dateStr,
+        startTime: validStartTime,
+        endTime: validEndTime,
+        isWeekendOrHoliday: Boolean(r.isWeekendOrHoliday),
+        hourlyRate: Number(r.hourlyRate) || 19610,
+        totalMinutes: Number(r.totalMinutes) || 0,
+        settledMinutes: Number(r.settledMinutes) || 0,
+        normalOvertimeMinutes: Number(r.normalOvertimeMinutes) || 0,
+        nightOvertimeMinutes: Number(r.nightOvertimeMinutes) || 0,
+        breakDeductedMinutes: Number(r.breakDeductedMinutes) || 0,
+        unpaidMinutes: Number(r.unpaidMinutes) || 0,
+        unpaidAmount: Number(r.unpaidAmount) || 0,
+        totalPay: Number(r.totalPay) || 0,
+        syncedToGoogleSheet: true,
+        notes: String(r.notes || ''),
+      };
+    });
+
     return {
       success: true,
-      activeShift: data.activeShift || null,
-      records: data.records || [],
+      activeShift: validatedActiveShift,
+      records: validatedRecords,
       serverTime: data.serverTime,
     };
   } catch (error) {
