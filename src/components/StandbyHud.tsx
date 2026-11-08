@@ -11,6 +11,7 @@ import {
   Maximize,
   Minimize,
   Zap,
+  RotateCcw,
 } from 'lucide-react';
 
 interface StandbyHudProps {
@@ -31,6 +32,7 @@ interface StandbyHudProps {
   isManualHoliday: boolean;
   onToggleHoliday: (val: boolean) => void;
   onStartShift: () => void;
+  onRestoreShift?: () => void;
   onEndShift: () => void;
   onCancelShift: () => void;
   onAdd30Min?: () => void;
@@ -56,6 +58,7 @@ export const StandbyHud: React.FC<StandbyHudProps> = ({
   isManualHoliday,
   onToggleHoliday,
   onStartShift,
+  onRestoreShift,
   onEndShift,
   onCancelShift,
   onAdd30Min,
@@ -116,12 +119,22 @@ export const StandbyHud: React.FC<StandbyHudProps> = ({
               </label>
             </div>
           )}
+          {onRestoreShift && (
+            <button
+              type="button"
+              onClick={onRestoreShift}
+              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/25 to-rose-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/60 text-amber-300 font-black text-sm flex items-center justify-center gap-2 shadow-glow-amber transition active:scale-98 cursor-pointer animate-pulse"
+            >
+              <RotateCcw className="w-4 h-4 text-amber-400" />
+              <span>🚨 16:00 야근 주행 즉시 복구 (통행료 +180분)</span>
+            </button>
+          )}
           <button
             onClick={onStartShift}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-base flex items-center justify-center gap-2 shadow-glow-green transition-all active:scale-98 cursor-pointer"
           >
             <Play className="w-5 h-5 fill-current" />
-            <span>영 업 시 작 (주행 출발 🐎)</span>
+            <span>영 업 시 작 (새로 주행 출발 🐎)</span>
           </button>
         </>
       ) : (

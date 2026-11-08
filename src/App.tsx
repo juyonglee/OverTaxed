@@ -32,6 +32,7 @@ import {
   Maximize,
   Minimize,
   Smartphone,
+  RotateCcw,
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -175,10 +176,11 @@ export const App: React.FC = () => {
           return currentLocal;
         });
       } else {
-        // 클라우드에서 이미 영업 종료/취소되었는데 로컬에 남아있으면 종료 반영
+        // 로컬에 이미 주행 중인 상태가 있는데 클라우드가 비어 있다면?
+        // 로컬 주행을 삭제하지 않고, 오히려 클라우드로 로컬의 주행 상태를 업로드(푸시 동기화)합니다!
         setActiveShift((currentLocal) => {
-          if (currentLocal && currentLocal.originalStartTime) {
-            return null; // 클라우드에서 종료됨
+          if (currentLocal && settings.useGoogleSheets && settings.googleScriptUrl) {
+            syncActiveShiftToCloud(settings.googleScriptUrl, currentLocal);
           }
           return currentLocal;
         });
@@ -452,6 +454,30 @@ export const App: React.FC = () => {
     }
   };
 
+  // 🚨 16:00 주행 긴급 복구 핸들러 (동기화 등으로 주행이 풀렸을 때 1초 만에 100% 복구)
+  const handleRestore1600Shift = () => {
+    soundFx.playStartDrive();
+    const today = new Date();
+    today.setHours(16, 0, 0, 0);
+
+    const origTime = new Date(today.getTime() + 180 * 60 * 1000); // 19:00
+
+    const restoredShift = {
+      startTime: today.toISOString(),
+      originalStartTime: origTime.toISOString(),
+      isHoliday: isManualHoliday,
+      manualBonusBlocks: 6, // 180분 앞당김
+    };
+
+    setActiveShift(restoredShift);
+    localStorage.setItem('overtaxed_active_shift', JSON.stringify(restoredShift));
+    localStorage.setItem('overtaxed_backup_shift', JSON.stringify(restoredShift));
+
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      syncActiveShiftToCloud(settings.googleScriptUrl, restoredShift);
+    }
+  };
+
   // 수동 30분 추가 (시계 기준 00분 / 30분 정각으로 스냅하여 앞당김!)
   const handleManualAdd30Min = () => {
     if (!activeShift) return;
@@ -626,6 +652,16 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {/* 🚨 16:00 주행 긴급 복구 버튼 */}
+          <button
+            type="button"
+            onClick={handleRestore1600Shift}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/25 to-rose-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/60 text-amber-300 font-black text-sm flex items-center justify-center gap-2 shadow-glow-amber transition active:scale-98 cursor-pointer animate-pulse"
+          >
+            <RotateCcw className="w-4 h-4 text-amber-400" />
+            <span>🚨 16:00 야근 주행 즉시 복구 (통행료 +180분)</span>
+          </button>
+
           <button
             onClick={handleStartShift}
             disabled={taxiStatus === 'PREPARING' && !settings.testMode}
@@ -636,7 +672,7 @@ export const App: React.FC = () => {
             }`}
           >
             <Play className="w-5 h-5 fill-current" />
-            <span>영 업 시 작 (주행 출발 🐎)</span>
+            <span>영 업 시 작 (새로 주행 출발 🐎)</span>
           </button>
         </>
       ) : (
@@ -845,6 +881,7 @@ export const App: React.FC = () => {
           isManualHoliday={isManualHoliday}
           onToggleHoliday={(val) => setIsManualHoliday(val)}
           onStartShift={handleStartShift}
+          onRestoreShift={handleRestore1600Shift}
           onEndShift={handleEndShift}
           onCancelShift={handleCancelShift}
           onAdd30Min={handleManualAdd30Min}
