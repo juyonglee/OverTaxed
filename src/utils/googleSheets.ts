@@ -1,13 +1,7 @@
-import { ShiftRecord, AppSettings } from '../types';
+import { ShiftRecord } from '../types';
 
 /**
  * [말 달리는 야근 미터기] Google Sheets & 실시간 기기 동기화 Google Apps Script 템플릿
- * 1. 스프레드시트 메뉴 > 확장 프로그램 > Apps Script 클릭
- * 2. 기존 코드를 지우고 아래 코드를 전체 붙여넣기
- * 3. 오른쪽 위 [배포] > [새 배포] 클릭
- * 4. 유형: [웹 앱] 선택
- * 5. 웹 앱에 액세스할 수 있는 사용자: [모든 사용자(Anyone)] 선택 (★필수★)
- * 6. [배포] 클릭 후 나오는 웹 앱 URL을 앱 설정에 붙여넣기!
  */
 export const GOOGLE_APPS_SCRIPT_TEMPLATE = `/**
  * [말 달리는 야근 미터기] 기기 간 실시간 동기화 & 장부 저장 스크립트
@@ -37,7 +31,30 @@ function doPost(e) {
       });
     }
 
-    // 2. 영업 종료: 장부에 기록 추가 & 주행 상태 종료
+    // 2. 단일 야근 기록 삭제
+    if (action === "DELETE_RECORD") {
+      var sheet = getOrCreateRecordSheet();
+      var lastRow = sheet.getLastRow();
+      for (var r = lastRow; r >= 2; r--) {
+        if (String(sheet.getRange(r, 1).getValue()) === String(data.id)) {
+          sheet.deleteRow(r);
+          break;
+        }
+      }
+      return createJsonResponse({ status: "success", message: "시트에서 기록이 삭제되었습니다." });
+    }
+
+    // 3. 전체 야근 기록 비우기
+    if (action === "CLEAR_ALL_RECORDS") {
+      var sheet = getOrCreateRecordSheet();
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        sheet.deleteRows(2, lastRow - 1);
+      }
+      return createJsonResponse({ status: "success", message: "시트의 전체 기록이 비워졌습니다." });
+    }
+
+    // 4. 영업 종료: 장부에 기록 추가 & 주행 상태 종료
     if (action === "SAVE_RECORD") {
       var sheet = getOrCreateRecordSheet();
       var record = data.record;
@@ -62,8 +79,6 @@ function doPost(e) {
       ];
 
       sheet.appendRow(row);
-
-      // 주행 상태 클리어
       props.deleteProperty("ACTIVE_SHIFT");
 
       return createJsonResponse({
@@ -87,9 +102,7 @@ function doGet(e) {
     var props = PropertiesService.getScriptProperties();
     var activeShiftJson = props.getProperty("ACTIVE_SHIFT");
     var activeShift = activeShiftJson ? JSON.parse(activeShiftJson) : null;
-
-    // 최근 야근 기록 목록 조회
-    var records = getRecentRecords(50);
+    var records = getRecentRecords(100);
 
     return createJsonResponse({
       status: "ok",
@@ -148,7 +161,7 @@ function getRecentRecords(limit) {
   for (var i = values.length - 1; i >= 0; i--) {
     var row = values[i];
     result.push({
-      id: row[0],
+      id: String(row[0]),
       date: typeof row[1] === "object" ? Utilities.formatDate(row[1], "Asia/Seoul", "yyyy-MM-dd") : String(row[1]),
       startTimeStr: String(row[2]),
       endTimeStr: String(row[3]),
@@ -175,7 +188,7 @@ function createJsonResponse(obj) {
 `;
 
 /**
- * 구글 클라우드에서 실시간 주행 상태 및 기록 조회 (기기간 동기화 & Invalid Date 100% 방어)
+ * 구글 클라우드에서 실시간 주행 상태 및 기록 조회
  */
 export async function fetchCloudState(scriptUrl: string): Promise<{
   success: boolean;
@@ -200,7 +213,6 @@ export async function fetchCloudState(scriptUrl: string): Promise<{
     }
     const data = await res.json();
 
-    // 1. activeShift 유효성 검증 (Invalid Date 방지)
     let validatedActiveShift = null;
     if (data.activeShift && data.activeShift.startTime) {
       const parsedStart = new Date(data.activeShift.startTime);
@@ -216,14 +228,12 @@ export async function fetchCloudState(scriptUrl: string): Promise<{
       }
     }
 
-    // 2. records의 startTime, endTime 안전 복원 (Invalid Date 방지)
     const rawRecords = Array.isArray(data.records) ? data.records : [];
     const validatedRecords: ShiftRecord[] = rawRecords.map((r: any, idx: number) => {
       const dateStr = String(r.date || new Date().toISOString().split('T')[0]).trim();
       const startTimeStr = String(r.startTimeStr || '00:00:00').trim();
       const endTimeStr = String(r.endTimeStr || '00:00:00').trim();
 
-      // startTime 안전 파싱
       let validStartTime = r.startTime;
       if (!validStartTime || isNaN(new Date(validStartTime).getTime())) {
         const timePart = startTimeStr.length === 5 ? `${startTimeStr}:00` : startTimeStr;
@@ -231,7 +241,6 @@ export async function fetchCloudState(scriptUrl: string): Promise<{
         validStartTime = isNaN(candidate.getTime()) ? new Date().toISOString() : candidate.toISOString();
       }
 
-      // endTime 안전 파싱
       let validEndTime = r.endTime;
       if (!validEndTime || isNaN(new Date(validEndTime).getTime())) {
         const timePart = endTimeStr.length === 5 ? `${endTimeStr}:00` : endTimeStr;
@@ -276,7 +285,7 @@ export async function fetchCloudState(scriptUrl: string): Promise<{
 }
 
 /**
- * 현재 주행 상태를 구글 클라우드에 실시간 동기화 (시작/통행료/취소)
+ * 현재 주행 상태를 구글 클라우드에 실시간 동기화
  */
 export async function syncActiveShiftToCloud(
   scriptUrl: string,
@@ -312,6 +321,53 @@ export async function syncActiveShiftToCloud(
       success: false,
       message: `동기화 실패: ${error instanceof Error ? error.message : '오류'}`,
     };
+  }
+}
+
+/**
+ * 구글 시트에서 특정 야근 기록 삭제
+ */
+export async function deleteRecordFromGoogleSheets(
+  scriptUrl: string,
+  recordId: string
+): Promise<{ success: boolean; message: string }> {
+  if (!scriptUrl || !scriptUrl.startsWith('https://script.google.com')) {
+    return { success: false, message: 'URL 미입력' };
+  }
+
+  try {
+    await fetch(scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'DELETE_RECORD', id: recordId }),
+    });
+    return { success: true, message: '구글 시트에서 삭제 요청되었습니다.' };
+  } catch (error) {
+    return { success: false, message: '삭제 요청 실패' };
+  }
+}
+
+/**
+ * 구글 시트의 전체 야근 기록 비우기
+ */
+export async function clearAllRecordsFromGoogleSheets(
+  scriptUrl: string
+): Promise<{ success: boolean; message: string }> {
+  if (!scriptUrl || !scriptUrl.startsWith('https://script.google.com')) {
+    return { success: false, message: 'URL 미입력' };
+  }
+
+  try {
+    await fetch(scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'CLEAR_ALL_RECORDS' }),
+    });
+    return { success: true, message: '구글 시트 전체 비우기 요청되었습니다.' };
+  } catch (error) {
+    return { success: false, message: '비우기 요청 실패' };
   }
 }
 

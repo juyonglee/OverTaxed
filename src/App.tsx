@@ -13,6 +13,8 @@ import {
   syncRecordToGoogleSheets,
   syncActiveShiftToCloud,
   fetchCloudState,
+  deleteRecordFromGoogleSheets,
+  clearAllRecordsFromGoogleSheets,
 } from './utils/googleSheets';
 import { HorseAnimation } from './components/HorseAnimation';
 import { MeterDisplay } from './components/MeterDisplay';
@@ -59,6 +61,16 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem('overtaxed_records');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // 사용자가 삭제한 레코드 ID 목록 (클라우드 폴링 시 다시 살아나는 것 방지)
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('overtaxed_deleted_ids');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
+  useEffect(() => {
+    localStorage.setItem('overtaxed_deleted_ids', JSON.stringify(Array.from(deletedIds)));
+  }, [deletedIds]);
 
   // 현재 진행 중인 야근 세션
   const [activeShift, setActiveShift] = useState<{
@@ -133,12 +145,16 @@ export const App: React.FC = () => {
         });
       }
 
-      // 2. 클라우드 기록 목록 병합
+      // 2. 클라우드 기록 목록 병합 (삭제된 아이템 제외)
       if (res.records && res.records.length > 0) {
         setRecords((prevRecords) => {
           const map = new Map<string, ShiftRecord>();
-          prevRecords.forEach((r) => map.set(r.id, r));
-          res.records.forEach((r) => map.set(r.id, r));
+          prevRecords.forEach((r) => {
+            if (!deletedIds.has(r.id)) map.set(r.id, r);
+          });
+          res.records.forEach((r) => {
+            if (!deletedIds.has(r.id)) map.set(r.id, r);
+          });
           return Array.from(map.values()).sort((a, b) => {
             const timeA = new Date(a.startTime).getTime() || 0;
             const timeB = new Date(b.startTime).getTime() || 0;
@@ -304,7 +320,30 @@ export const App: React.FC = () => {
     }
   }, [taxiStatus, currentCalc.settledBlocks, currentCalc.isSurcharge, currentCalc.isBreakTime]);
 
-  // [영업 취소 (기록 없이 리셋)] 핸들러
+  // 단일 기록 삭제 (로컬 + 클라우드 영구 삭제)
+  const handleDeleteRecord = (id: string) => {
+    setDeletedIds((prev) => new Set(prev).add(id));
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      deleteRecordFromGoogleSheets(settings.googleScriptUrl, id);
+    }
+  };
+
+  // 전체 기록 비우기 (로컬 + 클라우드 영구 비우기)
+  const handleClearAllRecords = () => {
+    const allIds = records.map((r) => r.id);
+    setDeletedIds((prev) => {
+      const next = new Set(prev);
+      allIds.forEach((id) => next.add(id));
+      return next;
+    });
+    setRecords([]);
+
+    if (settings.useGoogleSheets && settings.googleScriptUrl) {
+      clearAllRecordsFromGoogleSheets(settings.googleScriptUrl);
+    }
+  };
   const handleCancelShift = () => {
     if (!activeShift) return;
     if (confirm('현재 주행 중인 야근을 저장하지 않고 취소하시겠습니까?')) {
@@ -662,8 +701,8 @@ export const App: React.FC = () => {
           /* 통계 및 장부 탭 */
           <HistoryStats
             records={records}
-            onDeleteRecord={(id) => setRecords((prev) => prev.filter((r) => r.id !== id))}
-            onClearAll={() => setRecords([])}
+            onDeleteRecord={handleDeleteRecord}
+            onClearAll={handleClearAllRecords}
             googleScriptUrl={settings.googleScriptUrl}
           />
         )}
@@ -682,7 +721,7 @@ export const App: React.FC = () => {
         record={receiptRecord}
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
-        onDelete={(id) => setRecords((prev) => prev.filter((r) => r.id !== id))}
+        onDelete={handleDeleteRecord}
         syncStatus={syncStatus}
       />
     </div>
