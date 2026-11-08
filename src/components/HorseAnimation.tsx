@@ -5,6 +5,8 @@ interface HorseAnimationProps {
   isSurcharge: boolean; // 2배 할증 여부
   multiplier: number;
   isBreakTime?: boolean; // 4시간 30분 휴식시간 여부
+  height?: number;
+  className?: string;
 }
 
 export const HorseAnimation: React.FC<HorseAnimationProps> = ({
@@ -12,6 +14,8 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
   isSurcharge,
   multiplier,
   isBreakTime = false,
+  height = 95,
+  className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -28,13 +32,22 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
 
     const render = () => {
       frame++;
+
+      // 부모 컨테이너 너비에 맞춰 캔버스 너비 동적 확장 (빈 공간 방지)
+      if (canvas.parentElement) {
+        const parentW = canvas.parentElement.clientWidth;
+        if (parentW > 50 && canvas.width !== parentW) {
+          canvas.width = parentW;
+        }
+      }
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const isRunning = status === 'DRIVING' && !isBreakTime;
       const speedFactor = !isRunning ? 0 : isSurcharge ? 2.5 : 1.2;
 
       // 바닥선
-      const groundY = 82;
+      const groundY = canvas.height - 14;
       ctx.beginPath();
       ctx.moveTo(0, groundY);
       ctx.lineTo(canvas.width, groundY);
@@ -55,10 +68,14 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
         ctx.fillRect(x, groundY + 4, 8, 2);
       }
 
+      // 말 렌더링 위치 (항상 가로 중앙 정렬)
+      const horseX = Math.max(60, Math.floor(canvas.width / 2) - 35);
+      const horseY = groundY - 45;
+
       // 파티클 (할증 시 불꽃, 일반 시 먼지, 휴식 시 쉼표/하트)
       if (isRunning && Math.random() < (isSurcharge ? 0.8 : 0.4)) {
         particles.push({
-          x: 95,
+          x: horseX - 10,
           y: groundY - 5 + Math.random() * 8,
           size: Math.random() * (isSurcharge ? 5 : 3) + 2,
           speed: Math.random() * 3 + speedFactor * 2,
@@ -84,10 +101,6 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
         ctx.fillRect(p.x, p.y, p.size, p.size);
         ctx.restore();
       }
-
-      // 말 렌더링 위치
-      const horseX = 110;
-      const horseY = groundY - 45;
 
       ctx.save();
       ctx.imageSmoothingEnabled = false;
@@ -131,7 +144,6 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
 
       // 다리
       if (!isRunning) {
-        // 휴식 또는 정지: 네 다리 곧게
         drawPixel(2, 10, 2, 5, horseColor);
         drawPixel(8, 10, 2, 5, horseColor);
       } else if (cycle === 0) {
@@ -160,11 +172,11 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
       if (isBreakTime) {
         ctx.fillStyle = '#38bdf8';
         ctx.font = '9px "Press Start 2P", monospace';
-        ctx.fillText('REST 30m ☕', 160, 30);
+        ctx.fillText('REST 30m ☕', horseX + 45, horseY + 10);
       } else if (isSurcharge && isRunning) {
         ctx.fillStyle = '#ffaa00';
         ctx.font = '10px "Press Start 2P", monospace';
-        ctx.fillText('TURBO 200%', 160, 30);
+        ctx.fillText('TURBO 200%', horseX + 45, horseY + 10);
       }
 
       ctx.restore();
@@ -180,9 +192,9 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
   }, [status, isSurcharge, multiplier, isBreakTime]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl bg-meter-dark border border-slate-800 shadow-inner p-2 flex flex-col items-center">
+    <div className={`relative w-full overflow-hidden rounded-xl bg-meter-dark border border-slate-800 shadow-inner p-2 flex flex-col items-center justify-between ${className}`}>
       {/* 상태 헤더 뱃지 */}
-      <div className="w-full flex items-center justify-between px-3 py-1 text-xs">
+      <div className="w-full flex items-center justify-between px-2 sm:px-3 py-1 text-xs shrink-0">
         <div className="flex items-center gap-2">
           <span
             className={`inline-block w-2.5 h-2.5 rounded-full ${
@@ -195,12 +207,12 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
                 : 'bg-slate-600'
             }`}
           />
-          <span className="font-mono font-bold tracking-wider text-slate-300">
+          <span className="font-mono font-bold tracking-wider text-slate-300 text-[11px] sm:text-xs">
             {isBreakTime
               ? '☕ 법정 30분 의무 휴식 중'
               : status === 'DRIVING'
               ? isSurcharge
-                ? '🔥 심야/연장 할증 질주 중 (2.0x)'
+                ? '🔥 심야 할증 질주 중 (2.0x)'
                 : '🐎 정규 야근 주행 중 (1.5x)'
               : status === 'PREPARING'
               ? '⏳ 20:00 영업 준비 중'
@@ -209,7 +221,7 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
         </div>
         <div className="text-right">
           <span
-            className={`font-mono text-xs px-2 py-0.5 rounded font-bold ${
+            className={`font-mono text-[10px] sm:text-xs px-2 py-0.5 rounded font-bold ${
               isBreakTime
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                 : isSurcharge
@@ -219,16 +231,17 @@ export const HorseAnimation: React.FC<HorseAnimationProps> = ({
                 : 'bg-slate-800 text-slate-400'
             }`}
           >
-            {isBreakTime ? '미터기 일시정지' : status === 'DRIVING' ? `${multiplier.toFixed(1)}배율 적용` : '미터기 정지'}
+            {isBreakTime ? '미터기 정지' : status === 'DRIVING' ? `${multiplier.toFixed(1)}배율 적용` : '미터기 정지'}
           </span>
         </div>
       </div>
 
+      {/* 캔버스 (부모 너비에 100% 꽉 차도록 렌더링) */}
       <canvas
         ref={canvasRef}
-        width={300}
-        height={95}
-        className="w-full max-w-[340px] h-[95px] block my-1"
+        height={height}
+        className="w-full block my-auto transition-all"
+        style={{ height: `${height}px` }}
       />
     </div>
   );
