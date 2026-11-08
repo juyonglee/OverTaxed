@@ -29,7 +29,7 @@ export const MeterDisplay: React.FC<MeterDisplayProps> = ({
   hourlyRate,
   currentDisplayTime,
   startTimeDate,
-  dailyLimitHours = 4,
+  dailyLimitHours = 0,
   weeklyMinutes,
   weeklyLimitHours,
   stopPayOnLimit,

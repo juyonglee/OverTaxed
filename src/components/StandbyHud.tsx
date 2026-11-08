@@ -45,7 +45,7 @@ export const StandbyHud: React.FC<StandbyHudProps> = ({
   hourlyRate,
   currentTime,
   startTimeDate,
-  dailyLimitHours = 4,
+  dailyLimitHours = 0,
   weeklyMinutes,
   weeklyLimitHours,
   stopPayOnLimit,

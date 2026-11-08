@@ -49,7 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   googleScriptUrl: '',
   displayMode: 'continuous',
   testMode: false,
-  dailyLimitHours: 4, // 기본 1일 4시간 연장근로 한도 (초과 시 꽁짜 노동)
+  dailyLimitHours: 0, // 기본 0 (무제한: 20:30 이후 노동 자동 재개)
   weeklyLimitHours: 12, // 기본 주 12시간 연장근로 한도
   stopPayOnLimitReached: true, // 한도 초과 시 무급 봉사 모드
   enforceBreakTime: true, // 4시간마다 30분 의무 휴식
@@ -318,7 +318,7 @@ export const App: React.FC = () => {
         (settings.weeklyLimitHours || 0) * 60,
         settings.stopPayOnLimitReached,
         settings.enforceBreakTime !== false,
-        (settings.dailyLimitHours ?? 4) * 60
+        (settings.dailyLimitHours || 0) * 60
       )
     : {
         totalMinutes: 0,
@@ -551,7 +551,7 @@ export const App: React.FC = () => {
       (settings.weeklyLimitHours || 0) * 60,
       settings.stopPayOnLimitReached,
       settings.enforceBreakTime !== false,
-      (settings.dailyLimitHours ?? 4) * 60
+      (settings.dailyLimitHours || 0) * 60
     );
 
     const newRecord: ShiftRecord = {
@@ -784,7 +784,7 @@ export const App: React.FC = () => {
             hourlyRate={settings.hourlyRate}
             currentDisplayTime={currentTime}
             startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
-            dailyLimitHours={settings.dailyLimitHours ?? 4}
+            dailyLimitHours={settings.dailyLimitHours || 0}
             weeklyMinutes={totalWeeklyMinutes}
             weeklyLimitHours={settings.weeklyLimitHours || 0}
             stopPayOnLimit={settings.stopPayOnLimitReached}
@@ -832,7 +832,7 @@ export const App: React.FC = () => {
           hourlyRate={settings.hourlyRate}
           currentTime={currentTime}
           startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
-          dailyLimitHours={settings.dailyLimitHours ?? 4}
+          dailyLimitHours={settings.dailyLimitHours || 0}
           weeklyMinutes={totalWeeklyMinutes}
           weeklyLimitHours={settings.weeklyLimitHours || 0}
           stopPayOnLimit={settings.stopPayOnLimitReached}

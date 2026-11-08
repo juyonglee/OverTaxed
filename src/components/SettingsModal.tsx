@@ -34,7 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [localSettings, setLocalSettings] = useState<AppSettings>(() => ({
     ...settings,
-    dailyLimitHours: settings.dailyLimitHours ?? 4,
+    dailyLimitHours: settings.dailyLimitHours || 0,
     soundSettings: settings.soundSettings || {
       master: settings.soundEnabled !== false,
       buttonBeep: true,
