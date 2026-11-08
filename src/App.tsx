@@ -21,6 +21,7 @@ import { MeterDisplay } from './components/MeterDisplay';
 import { ReceiptModal } from './components/ReceiptModal';
 import { HistoryStats } from './components/HistoryStats';
 import { SettingsModal } from './components/SettingsModal';
+import { StandbyHud } from './components/StandbyHud';
 import {
   Play,
   Square,
@@ -28,6 +29,9 @@ import {
   Receipt,
   Car,
   Sparkles,
+  Maximize,
+  Minimize,
+  Smartphone,
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -105,6 +109,39 @@ export const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [isManualHoliday, setIsManualHoliday] = useState<boolean>(false);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
+
+  // 탁상 거치대 HUD 모드 & 화면 꺼짐 방지(WakeLock)
+  const [isStandMode, setIsStandMode] = useState<boolean>(false);
+  const [isWakeLockActive, setIsWakeLockActive] = useState<boolean>(false);
+  const wakeLockRef = useRef<any>(null);
+
+  const requestWakeLock = useCallback(async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        const lock = await (navigator as any).wakeLock.request('screen');
+        wakeLockRef.current = lock;
+        setIsWakeLockActive(true);
+        lock.addEventListener('release', () => {
+          setIsWakeLockActive(false);
+          wakeLockRef.current = null;
+        });
+      } catch {
+        setIsWakeLockActive(false);
+      }
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+      } catch {
+        // ignore
+      }
+      wakeLockRef.current = null;
+      setIsWakeLockActive(false);
+    }
+  }, []);
 
   // 시계 및 실시간 계산 결과
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -213,17 +250,20 @@ export const App: React.FC = () => {
     return now;
   }, [settings.testMode, settings.simulatedHour]);
 
-  // 화면 복귀(모바일 화면 켜짐/앱 전환) 시 즉시 시간 및 클라우드 동기화
+  // 화면 복귀(모바일 화면 켜짐/앱 전환) 시 즉시 시간 및 클라우드 동기화 + WakeLock 재획득
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         setCurrentTime(getEffectiveCurrentTime());
         pollCloudSync();
+        if (activeShift || isStandMode) {
+          requestWakeLock();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [getEffectiveCurrentTime, pollCloudSync]);
+  }, [getEffectiveCurrentTime, pollCloudSync, activeShift, isStandMode, requestWakeLock]);
 
   // 1초마다 시계 갱신 및 요금 인상 체크
   useEffect(() => {
@@ -245,6 +285,15 @@ export const App: React.FC = () => {
   } else if (isWeekdayPreOpen && !settings.testMode) {
     taxiStatus = 'PREPARING';
   }
+
+  // 주행 중이거나 거치대 HUD 모드일 때 화면 꺼짐 방지(WakeLock) 유지
+  useEffect(() => {
+    if (taxiStatus === 'DRIVING' || isStandMode) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [taxiStatus, isStandMode, requestWakeLock, releaseWakeLock]);
 
   // 일요일 00:00:00 기준 이번 주 누적 완료된 야근 시간(분) 계산 (Invalid Date 방어)
   const sundayStart = getSundayStartOfWeek(effectiveNow).getTime();
@@ -514,7 +563,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-3 sm:p-6 font-sans">
+    <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 font-sans">
       {/* 최상단 네비게이션 헤더 */}
       <header className="w-full max-w-md flex items-center justify-between py-2 px-1 mb-2">
         <div className="flex items-center gap-2">
@@ -550,9 +599,24 @@ export const App: React.FC = () => {
           <button
             onClick={() => {
               soundFx.playBeep();
+              setIsStandMode(true);
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen?.().catch(() => {});
+              }
+            }}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition active:scale-95 shadow-glow-green cursor-pointer"
+            title="아이폰 탁상 세로 거치대 전용 HUD 모드"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span className="font-sans font-bold">거치대 HUD</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playBeep();
               setIsSettingsOpen(true);
             }}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition active:scale-95"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition active:scale-95 cursor-pointer"
             title="환경 설정"
           >
             <SettingsIcon className="w-4 h-4 text-emerald-400" />
@@ -724,6 +788,33 @@ export const App: React.FC = () => {
         onDelete={handleDeleteRecord}
         syncStatus={syncStatus}
       />
+
+      {/* 탁상 세로 거치대 전용 풀스크린 HUD 모드 */}
+      {isStandMode && (
+        <StandbyHud
+          status={taxiStatus}
+          calc={currentCalc}
+          displayMode={settings.displayMode}
+          hourlyRate={settings.hourlyRate}
+          currentTime={currentTime}
+          startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
+          weeklyMinutes={totalWeeklyMinutes}
+          weeklyLimitHours={settings.weeklyLimitHours || 0}
+          stopPayOnLimit={settings.stopPayOnLimitReached}
+          enforceBreakTime={settings.enforceBreakTime !== false}
+          isCloudSynced={isCloudSynced}
+          useGoogleSheets={settings.useGoogleSheets}
+          isWakeLockActive={isWakeLockActive}
+          isManualHoliday={isManualHoliday}
+          onToggleHoliday={(val) => setIsManualHoliday(val)}
+          onStartShift={handleStartShift}
+          onEndShift={handleEndShift}
+          onCancelShift={handleCancelShift}
+          onAdd30Min={handleManualAdd30Min}
+          onSub30Min={handleManualSub30Min}
+          onClose={() => setIsStandMode(false)}
+        />
+      )}
     </div>
   );
 };
