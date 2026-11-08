@@ -20,6 +20,8 @@ export interface ShiftRecord {
   nightOvertimeMinutes: number; // 2.0배 구간 분
   breakDeductedMinutes: number; // 4시간마다 공제된 휴식 분
   totalPay: number; // 총 야근비 (원)
+  unpaidMinutes?: number; // 30분 못 채운 자투리 무료 봉사 분
+  unpaidAmount?: number; // 무료 봉사 환산 금액 (원)
   manualBonusBlocks?: number; // 수동 추가된 30분 블록 수
   syncedToGoogleSheet?: boolean;
   notes?: string;

@@ -43,12 +43,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const startStr = startDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
   const endStr = endDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+  const unpaidMins = record.unpaidMinutes || 0;
+  const unpaidAmt = record.unpaidAmount || 0;
+  const minsToNextBlock = unpaidMins > 0 ? 30 - unpaidMins : 0;
+
   // 카카오톡/문자 전송용 포맷 텍스트
   const shareText = `[🐎 야근 미터기 영수증]
 📅 일자: ${record.date} (${record.isWeekendOrHoliday ? '휴일근무' : '평일야근'})
-⏱️ 시간: ${startStr} ~ ${endStr} (인정: ${formatDuration(record.settledMinutes)})
-${record.breakDeductedMinutes > 0 ? `☕ 휴게시간: -${formatDuration(record.breakDeductedMinutes)} 공제\n` : ''}💰 최종 야근수당: ₩${formatKRW(record.totalPay)}원
-(야근 택시 미터기로 정산 완료!)`;
+⏱️ 시간: ${startStr} ~ ${endStr}
+✅ 30분 단위 인정: ${formatDuration(record.settledMinutes)} (₩${formatKRW(record.totalPay)}원)
+${unpaidMins > 0 ? `❤️ 회사 무료봉사: ${unpaidMins}분 (약 ₩${formatKRW(unpaidAmt)}원 상당 기부 😭)\n` : ''}${record.breakDeductedMinutes > 0 ? `☕ 휴게시간: -${formatDuration(record.breakDeductedMinutes)} 공제\n` : ''}💰 최종 정산 수당: ₩${formatKRW(record.totalPay)}원
+(야근 택시 미터기로 칼같이 정산 완료!)`;
 
   // 1. 🖼️ 이미지로 저장 및 모바일 카카오톡/메시지 직접 공유
   const handleCaptureAndShareImage = async () => {
@@ -164,10 +169,24 @@ ${record.breakDeductedMinutes > 0 ? `☕ 휴게시간: -${formatDuration(record.
               <span className="text-slate-500">총 소요 시간</span>
               <span className="text-slate-700">{formatDuration(record.totalMinutes)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">30분 정산 인정</span>
-              <span className="font-bold text-slate-900">{formatDuration(record.settledMinutes)}</span>
+            <div className="flex justify-between bg-emerald-50/80 p-1 rounded font-bold">
+              <span className="text-emerald-900">30분 정산 인정</span>
+              <span className="text-emerald-700">{formatDuration(record.settledMinutes)}</span>
             </div>
+
+            {/* 자투리 무료 봉사 기부 시간 & 금액 */}
+            {unpaidMins > 0 && (
+              <div className="flex flex-col gap-0.5 bg-rose-50/70 p-1.5 rounded border border-rose-200/60 text-[11px]">
+                <div className="flex justify-between text-rose-700 font-bold">
+                  <span>❤️ 회사 무료봉사 (자투리)</span>
+                  <span>{unpaidMins}분 (약 ₩{formatKRW(unpaidAmt)})</span>
+                </div>
+                <div className="text-[10px] text-rose-500 font-mono">
+                  ※ 30분을 못 채워 회사에 기부되었습니다 ({minsToNextBlock}분 부족 😭)
+                </div>
+              </div>
+            )}
+
             {record.breakDeductedMinutes > 0 && (
               <div className="flex justify-between text-sky-700 font-medium text-[11px]">
                 <span>☕ 4시간 의무 휴게시간</span>

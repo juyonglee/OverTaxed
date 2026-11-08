@@ -202,6 +202,8 @@ export const App: React.FC = () => {
         breakRemainingSeconds: 0,
         minutesUntilNextBreak: 240,
         breakDeductedMinutes: 0,
+        unpaidMinutes: 0,
+        unpaidAmount: 0,
       };
 
   // 이번 주 총 야근 시간 (이전 완료 + 현재 주행)
@@ -366,6 +368,8 @@ export const App: React.FC = () => {
       nightOvertimeMinutes: finalCalc.nightOvertimeMinutes,
       breakDeductedMinutes: finalCalc.breakDeductedMinutes,
       totalPay: finalCalc.settledPay,
+      unpaidMinutes: finalCalc.unpaidMinutes,
+      unpaidAmount: finalCalc.unpaidAmount,
       manualBonusBlocks: activeShift.manualBonusBlocks || 0,
       syncedToGoogleSheet: false,
     };

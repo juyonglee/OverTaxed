@@ -17,6 +17,8 @@ export interface CalculationResult {
   breakRemainingSeconds: number; // 휴식 종료까지 남은 초
   minutesUntilNextBreak: number; // 다음 30분 휴식까지 남은 분
   breakDeductedMinutes: number; // 휴식으로 제외된 총 분
+  unpaidMinutes: number; // 30분 단위 못 채운 자투리 무료 봉사 분
+  unpaidAmount: number; // 무료 봉사 환산액 (원)
 }
 
 export function isWeekend(date: Date): boolean {
@@ -212,6 +214,11 @@ export function calculateOvertimePay(
       ? settledPay
       : Math.round(settledPay + currentBlockAmount * currentBlockProgress);
 
+  // 30분 단위 못 채운 자투리 무료 봉사 시간 & 환산액 계산
+  const settledMinutes = settledBlocks * 30;
+  const unpaidMinutes = Math.max(0, pureWorkMinutes - settledMinutes);
+  const unpaidAmount = Math.round(((hourlyRate * currentMultiplier) / 60) * unpaidMinutes);
+
   return {
     totalMinutes,
     pureWorkMinutes,
@@ -231,6 +238,8 @@ export function calculateOvertimePay(
     breakRemainingSeconds,
     minutesUntilNextBreak,
     breakDeductedMinutes,
+    unpaidMinutes,
+    unpaidAmount,
   };
 }
 
