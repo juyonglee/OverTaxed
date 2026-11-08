@@ -145,9 +145,10 @@ export const App: React.FC = () => {
 
   // 시계 및 실시간 계산 결과
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const prevSettledBlocksRef = useRef<number>(0);
-  const prevSurchargeRef = useRef<boolean>(false);
-  const prevBreakTimeRef = useRef<boolean>(false);
+  const prevSettledBlocksRef = useRef<number>(-1);
+  const prevSurchargeRef = useRef<boolean | null>(null);
+  const prevBreakTimeRef = useRef<boolean | null>(null);
+  const isSoundReadyRef = useRef<boolean>(false);
 
   // 구글 클라우드 기기 간 실시간 동기화 함수
   const pollCloudSync = useCallback(async () => {
@@ -343,29 +344,43 @@ export const App: React.FC = () => {
   // 이번 주 총 야근 시간 (이전 완료 + 현재 주행)
   const totalWeeklyMinutes = priorWeeklyMinutes + currentCalc.totalMinutes;
 
-  // 30분 단위 요금 인상, 4시간 휴게시간, 2배 할증 진입 사운드 트리거
+  // 30분 단위 요금 인상, 4시간 휴게시간, 2배 할증 진입 사운드 트리거 (오작동/중복 방지)
   useEffect(() => {
     if (taxiStatus === 'DRIVING') {
-      // 30분 블록 증가 시 (말 울음소리 / 돈 짤랑 소리)
-      if (currentCalc.settledBlocks > prevSettledBlocksRef.current) {
+      // 1. 최초 로드/새로고침 시에는 현재 상태만 초기화하고 사운드 재생 생략
+      if (!isSoundReadyRef.current) {
+        prevSettledBlocksRef.current = currentCalc.settledBlocks;
+        prevSurchargeRef.current = currentCalc.isSurcharge;
+        prevBreakTimeRef.current = currentCalc.isBreakTime;
+        isSoundReadyRef.current = true;
+        return;
+      }
+
+      // 2. 30분 블록 증가 시 (말 울음소리 / 돈 짤랑 소리) - 이전 값보다 실제로 커졌을 때만 1회
+      if (
+        prevSettledBlocksRef.current >= 0 &&
+        currentCalc.settledBlocks > prevSettledBlocksRef.current
+      ) {
         soundFx.playSettlementSound();
         prevSettledBlocksRef.current = currentCalc.settledBlocks;
       }
-      // 4시간 휴게시간 진입 시 차임벨
-      if (currentCalc.isBreakTime && !prevBreakTimeRef.current) {
+
+      // 3. 4시간 휴게시간 진입 시 (false -> true 순간에만) 차임벨
+      if (currentCalc.isBreakTime && prevBreakTimeRef.current === false) {
         soundFx.playBreakChime();
       }
       prevBreakTimeRef.current = currentCalc.isBreakTime;
 
-      // 2배 할증 진입 시 경보음
-      if (currentCalc.isSurcharge && !prevSurchargeRef.current) {
+      // 4. 2배 할증 진입 시 (일반 1.5배 -> 2.0배 전환 순간에만) 경보음
+      if (currentCalc.isSurcharge && prevSurchargeRef.current === false) {
         soundFx.playSurchargeAlarm();
       }
       prevSurchargeRef.current = currentCalc.isSurcharge;
     } else {
-      prevSettledBlocksRef.current = 0;
-      prevSurchargeRef.current = false;
-      prevBreakTimeRef.current = false;
+      isSoundReadyRef.current = false;
+      prevSettledBlocksRef.current = -1;
+      prevSurchargeRef.current = null;
+      prevBreakTimeRef.current = null;
     }
   }, [taxiStatus, currentCalc.settledBlocks, currentCalc.isSurcharge, currentCalc.isBreakTime]);
 
@@ -411,6 +426,13 @@ export const App: React.FC = () => {
     soundFx.playStartDrive();
     const startTimeDate = getEffectiveCurrentTime();
     const isHoliday = isWeekend(startTimeDate) || isManualHoliday;
+    const isNight = !isHoliday && (startTimeDate.getHours() >= 22 || startTimeDate.getHours() < 8);
+
+    // 시작 시점 상태를 사전 등록하여 시작하자마자 할증 사이렌 등이 울리지 않도록 보호
+    prevSettledBlocksRef.current = 0;
+    prevSurchargeRef.current = isNight;
+    prevBreakTimeRef.current = false;
+    isSoundReadyRef.current = true;
 
     const newShift = {
       startTime: startTimeDate.toISOString(),
@@ -431,6 +453,9 @@ export const App: React.FC = () => {
   const handleManualAdd30Min = () => {
     if (!activeShift) return;
     soundFx.playSettlementSound();
+
+    // 수동 추가 시 useEffect에서 중복 재생되지 않도록 방어
+    prevSettledBlocksRef.current = currentCalc.settledBlocks + 1;
 
     const origTimeStr =
       activeShift.originalStartTime ||
@@ -465,6 +490,7 @@ export const App: React.FC = () => {
   const handleManualSub30Min = () => {
     if (!activeShift || !activeShift.manualBonusBlocks) return;
     soundFx.playBeep();
+    prevSettledBlocksRef.current = Math.max(0, currentCalc.settledBlocks - 1);
 
     const origTimeStr =
       activeShift.originalStartTime ||
@@ -563,9 +589,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 font-sans">
+    <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 landscape:p-3 font-sans">
       {/* 최상단 네비게이션 헤더 */}
-      <header className="w-full max-w-md flex items-center justify-between py-2 px-1 mb-2">
+      <header className="w-full max-w-md landscape:max-w-4xl flex items-center justify-between py-2 px-1 mb-2">
         <div className="flex items-center gap-2">
           <span className="text-2xl animate-bounce">🐎</span>
           <div>
@@ -605,7 +631,7 @@ export const App: React.FC = () => {
               }
             }}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition active:scale-95 shadow-glow-green cursor-pointer"
-            title="아이폰 탁상 세로 거치대 전용 HUD 모드"
+            title="아이폰 거치대 전용 HUD 모드 (세로/가로 자동 지원)"
           >
             <Smartphone className="w-3.5 h-3.5" />
             <span className="font-sans font-bold">거치대 HUD</span>
@@ -625,7 +651,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* 탭 네비게이션 (미터기 주행 vs 수당 장부) */}
-      <div className="w-full max-w-md grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-4">
+      <div className="w-full max-w-md landscape:max-w-4xl grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-4">
         <button
           onClick={() => {
             soundFx.playBeep();
@@ -661,106 +687,111 @@ export const App: React.FC = () => {
         </button>
       </div>
 
-      {/* 메인 콘텐츠 영역 */}
-      <main className="w-full max-w-md flex flex-col gap-4">
+      {/* 메인 콘텐츠 영역 (세로: 1열 스택 / 가로: 좌우 2열 분할) */}
+      <main className="w-full max-w-md landscape:max-w-4xl flex flex-col gap-4">
         {activeTab === 'meter' ? (
-          <>
-            {/* 1. 말 달리는 레트로 픽셀 애니메이션 패널 */}
-            <HorseAnimation
-              status={taxiStatus}
-              isSurcharge={currentCalc.isSurcharge}
-              multiplier={currentCalc.currentRateMultiplier}
-              isBreakTime={currentCalc.isBreakTime}
-            />
+          <div className="flex flex-col gap-4 landscape:grid landscape:grid-cols-2 landscape:gap-4 landscape:items-start">
+            {/* 좌측 영역: 말 달리기 & 조작 레버 */}
+            <div className="flex flex-col gap-3">
+              {/* 1. 말 달리는 레트로 픽셀 애니메이션 패널 */}
+              <HorseAnimation
+                status={taxiStatus}
+                isSurcharge={currentCalc.isSurcharge}
+                multiplier={currentCalc.currentRateMultiplier}
+                isBreakTime={currentCalc.isBreakTime}
+              />
 
-            {/* 2. 레트로 택시 미터기 대형 디스플레이 */}
-            <MeterDisplay
-              status={taxiStatus}
-              calc={currentCalc}
-              displayMode={settings.displayMode}
-              hourlyRate={settings.hourlyRate}
-              currentDisplayTime={currentTime}
-              startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
-              weeklyMinutes={totalWeeklyMinutes}
-              weeklyLimitHours={settings.weeklyLimitHours || 0}
-              stopPayOnLimit={settings.stopPayOnLimitReached}
-              enforceBreakTime={settings.enforceBreakTime !== false}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              onAdd30Min={handleManualAdd30Min}
-              onSub30Min={handleManualSub30Min}
-            />
+              {/* 2. 대형 조작 레버 (영업 시작 / 영업 종료) */}
+              <div className="w-full flex flex-col gap-2 mt-1">
+                {taxiStatus !== 'DRIVING' && (
+                  <div className="flex items-center justify-between px-1 text-xs">
+                    <span className="text-slate-400 font-mono">
+                      {isWeekend(effectiveNow) ? '📅 주말 규정 자동 적용' : '📅 평일 규정 적용 중'}
+                    </span>
+                    {!isWeekend(effectiveNow) && (
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white transition">
+                        <input
+                          type="checkbox"
+                          checked={isManualHoliday}
+                          onChange={(e) => setIsManualHoliday(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
+                        />
+                        <span className={isManualHoliday ? 'text-emerald-400 font-bold' : ''}>
+                          오늘 공휴일(대체공휴일)
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
 
-            {/* 3. 대형 조작 레버 (영업 시작 / 영업 종료) */}
-            <div className="w-full flex flex-col gap-2 mt-1">
-              {taxiStatus !== 'DRIVING' && (
-                <div className="flex items-center justify-between px-1 text-xs">
-                  <span className="text-slate-400 font-mono">
-                    {isWeekend(effectiveNow) ? '📅 주말 규정 자동 적용' : '📅 평일 규정 적용 중'}
-                  </span>
-                  {!isWeekend(effectiveNow) && (
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white transition">
-                      <input
-                        type="checkbox"
-                        checked={isManualHoliday}
-                        onChange={(e) => setIsManualHoliday(e.target.checked)}
-                        className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
-                      />
-                      <span className={isManualHoliday ? 'text-emerald-400 font-bold' : ''}>
-                        오늘 공휴일(대체공휴일)
-                      </span>
-                    </label>
+                {taxiStatus !== 'DRIVING' ? (
+                  <button
+                    onClick={handleStartShift}
+                    disabled={taxiStatus === 'PREPARING' && !settings.testMode}
+                    className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-98 ${
+                      taxiStatus === 'PREPARING' && !settings.testMode
+                        ? 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-700'
+                        : 'bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black shadow-glow-green cursor-pointer'
+                    }`}
+                  >
+                    <Play className="w-5 h-5 fill-current" />
+                    <span>영 업 시 작 (주행 출발 🐎)</span>
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={handleEndShift}
+                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
+                    >
+                      <Square className="w-5 h-5 fill-current" />
+                      <span>영 업 종 료 (지불 / 정산 🧾)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCancelShift}
+                      className="text-xs text-slate-500 hover:text-rose-400 py-1 text-center transition flex items-center justify-center gap-1"
+                    >
+                      ❌ 잘못 시작했나요? (기록 없이 영업 취소)
+                    </button>
+                  </div>
+                )}
+
+                {/* 하단 보조 안내 팁 */}
+                <div className="text-center text-[11px] text-slate-500 font-mono mt-1">
+                  {taxiStatus === 'DRIVING' ? (
+                    <span className="text-emerald-400 flex items-center justify-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      야근비가 30분 단위로 정산 및 누적되고 있습니다.
+                    </span>
+                  ) : (
+                    <span>
+                      평일은 20:00부터, 주말/공휴일은 언제든 영업 시작이 가능합니다.
+                    </span>
                   )}
                 </div>
-              )}
-
-              {taxiStatus !== 'DRIVING' ? (
-                <button
-                  onClick={handleStartShift}
-                  disabled={taxiStatus === 'PREPARING' && !settings.testMode}
-                  className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-98 ${
-                    taxiStatus === 'PREPARING' && !settings.testMode
-                      ? 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-700'
-                      : 'bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black shadow-glow-green cursor-pointer'
-                  }`}
-                >
-                  <Play className="w-5 h-5 fill-current" />
-                  <span>영 업 시 작 (주행 출발 🐎)</span>
-                </button>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={handleEndShift}
-                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
-                  >
-                    <Square className="w-5 h-5 fill-current" />
-                    <span>영 업 종 료 (지불 / 정산 🧾)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCancelShift}
-                    className="text-xs text-slate-500 hover:text-rose-400 py-1 text-center transition flex items-center justify-center gap-1"
-                  >
-                    ❌ 잘못 시작했나요? (기록 없이 영업 취소)
-                  </button>
-                </div>
-              )}
-
-              {/* 하단 보조 안내 팁 */}
-              <div className="text-center text-[11px] text-slate-500 font-mono mt-1">
-                {taxiStatus === 'DRIVING' ? (
-                  <span className="text-emerald-400 flex items-center justify-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    야근비가 30분 단위로 정산 및 누적되고 있습니다.
-                  </span>
-                ) : (
-                  <span>
-                    평일은 20:00부터, 주말/공휴일은 언제든 영업 시작이 가능합니다.
-                  </span>
-                )}
               </div>
             </div>
-          </>
+
+            {/* 우측 영역: 레트로 택시 미터기 대형 디스플레이 */}
+            <div className="flex flex-col gap-3">
+              <MeterDisplay
+                status={taxiStatus}
+                calc={currentCalc}
+                displayMode={settings.displayMode}
+                hourlyRate={settings.hourlyRate}
+                currentDisplayTime={currentTime}
+                startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
+                weeklyMinutes={totalWeeklyMinutes}
+                weeklyLimitHours={settings.weeklyLimitHours || 0}
+                stopPayOnLimit={settings.stopPayOnLimitReached}
+                enforceBreakTime={settings.enforceBreakTime !== false}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+                onAdd30Min={handleManualAdd30Min}
+                onSub30Min={handleManualSub30Min}
+              />
+            </div>
+          </div>
         ) : (
           /* 통계 및 장부 탭 */
           <HistoryStats
