@@ -59,12 +59,24 @@ export const App: React.FC = () => {
   // 현재 진행 중인 야근 세션
   const [activeShift, setActiveShift] = useState<{
     startTime: string;
-    originalStartTime?: string; // 처음 버튼 누른 원래 시각
+    originalStartTime?: string; // 처음 버튼 누른 진짜 원래 시각
     isHoliday: boolean;
     manualBonusBlocks?: number;
   } | null>(() => {
     const saved = localStorage.getItem('overtaxed_active_shift');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && !parsed.originalStartTime) {
+        // 기존 세션에 originalStartTime이 없으면 역산 보정
+        parsed.originalStartTime = new Date(
+          new Date(parsed.startTime).getTime() + (parsed.manualBonusBlocks || 0) * 30 * 60 * 1000
+        ).toISOString();
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
   });
 
   // 탭 상태: 'meter' | 'stats'
@@ -236,16 +248,22 @@ export const App: React.FC = () => {
   };
 
   // 수동 30분 추가 (시계 기준 00분 / 30분 정각으로 스냅하여 앞당김!)
-  // 예: 16:44에 누르면 -> 직전 30분 경계(16:30) 기준 30분 전인 16:00 정각으로 딱 맞춤!
   const handleManualAdd30Min = () => {
     if (!activeShift) return;
     soundFx.playSettlementSound();
 
-    const origTime = new Date(activeShift.originalStartTime || activeShift.startTime);
+    // originalStartTime이 없으면 (구버전 데이터) 현재 시각 또는 현재 startTime 역산으로 안전하게 설정
+    const origTimeStr =
+      activeShift.originalStartTime ||
+      new Date(
+        new Date(activeShift.startTime).getTime() +
+          (activeShift.manualBonusBlocks || 0) * 30 * 60 * 1000
+      ).toISOString();
+
+    const origTime = new Date(origTimeStr);
     const prevBoundary = getPrevClock30Min(origTime);
     const nextBonus = (activeShift.manualBonusBlocks || 0) + 1;
-    // nextBonus 1회차: prevBoundary - 30분 (예: 16:30 -> 16:00:00)
-    // nextBonus 2회차: prevBoundary - 60분 (예: 15:30:00)
+    // prevBoundary에서 (nextBonus * 30분) 전 정각으로 스냅
     const snappedStartTime = new Date(
       prevBoundary.getTime() - nextBonus * 30 * 60 * 1000
     ).toISOString();
@@ -254,6 +272,7 @@ export const App: React.FC = () => {
       prev
         ? {
             ...prev,
+            originalStartTime: origTimeStr,
             startTime: snappedStartTime,
             manualBonusBlocks: nextBonus,
           }
@@ -261,26 +280,34 @@ export const App: React.FC = () => {
     );
   };
 
-  // 수동 30분 차감 (취소 시 이전 정각 또는 원래 시각으로 복원)
+  // 수동 30분 차감 (취소 시 이전 정각 또는 원래 시각으로 100% 복원)
   const handleManualSub30Min = () => {
     if (!activeShift || !activeShift.manualBonusBlocks) return;
     soundFx.playBeep();
 
+    const origTimeStr =
+      activeShift.originalStartTime ||
+      new Date(
+        new Date(activeShift.startTime).getTime() +
+          (activeShift.manualBonusBlocks || 0) * 30 * 60 * 1000
+      ).toISOString();
+
     const nextBonus = activeShift.manualBonusBlocks - 1;
+
     if (nextBonus <= 0) {
-      // 원래 켰던 시각으로 완전 복원
-      const origTimeStr = activeShift.originalStartTime || activeShift.startTime;
+      // 0회가 되면 원래 켰던 시각으로 100% 완전 원복!
       setActiveShift((prev) =>
         prev
           ? {
               ...prev,
+              originalStartTime: origTimeStr,
               startTime: origTimeStr,
               manualBonusBlocks: 0,
             }
           : null
       );
     } else {
-      const origTime = new Date(activeShift.originalStartTime || activeShift.startTime);
+      const origTime = new Date(origTimeStr);
       const prevBoundary = getPrevClock30Min(origTime);
       const snappedStartTime = new Date(
         prevBoundary.getTime() - nextBonus * 30 * 60 * 1000
@@ -290,6 +317,7 @@ export const App: React.FC = () => {
         prev
           ? {
               ...prev,
+              originalStartTime: origTimeStr,
               startTime: snappedStartTime,
               manualBonusBlocks: nextBonus,
             }
