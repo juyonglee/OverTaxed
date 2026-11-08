@@ -589,9 +589,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 landscape:p-3 font-sans">
+    <div className="min-h-[100dvh] bg-[#0a0d12] text-slate-100 flex flex-col items-center justify-start p-2.5 sm:p-6 font-sans">
       {/* 최상단 네비게이션 헤더 */}
-      <header className="w-full max-w-md landscape:max-w-4xl flex items-center justify-between py-2 px-1 mb-2">
+      <header className="w-full max-w-md flex items-center justify-between py-2 px-1 mb-2">
         <div className="flex items-center gap-2">
           <span className="text-2xl animate-bounce">🐎</span>
           <div>
@@ -631,7 +631,7 @@ export const App: React.FC = () => {
               }
             }}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition active:scale-95 shadow-glow-green cursor-pointer"
-            title="아이폰 거치대 전용 HUD 모드 (세로/가로 자동 지원)"
+            title="아이폰 탁상 거치대 HUD 모드"
           >
             <Smartphone className="w-3.5 h-3.5" />
             <span className="font-sans font-bold">거치대 HUD</span>
@@ -651,7 +651,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* 탭 네비게이션 (미터기 주행 vs 수당 장부) */}
-      <div className="w-full max-w-md landscape:max-w-4xl grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-4">
+      <div className="w-full max-w-md grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-4">
         <button
           onClick={() => {
             soundFx.playBeep();
@@ -687,111 +687,106 @@ export const App: React.FC = () => {
         </button>
       </div>
 
-      {/* 메인 콘텐츠 영역 (세로: 1열 스택 / 가로: 좌우 2열 분할) */}
-      <main className="w-full max-w-md landscape:max-w-4xl flex flex-col gap-4">
+      {/* 메인 콘텐츠 영역 (예전 클래식 미터기 본체 스타일 1열 일체형) */}
+      <main className="w-full max-w-md flex flex-col gap-4">
         {activeTab === 'meter' ? (
-          <div className="flex flex-col gap-4 landscape:grid landscape:grid-cols-2 landscape:gap-4 landscape:items-start">
-            {/* 좌측 영역: 말 달리기 & 조작 레버 */}
-            <div className="flex flex-col gap-3">
-              {/* 1. 말 달리는 레트로 픽셀 애니메이션 패널 */}
-              <HorseAnimation
-                status={taxiStatus}
-                isSurcharge={currentCalc.isSurcharge}
-                multiplier={currentCalc.currentRateMultiplier}
-                isBreakTime={currentCalc.isBreakTime}
-              />
+          <>
+            {/* 1. 말 달리는 레트로 픽셀 애니메이션 패널 */}
+            <HorseAnimation
+              status={taxiStatus}
+              isSurcharge={currentCalc.isSurcharge}
+              multiplier={currentCalc.currentRateMultiplier}
+              isBreakTime={currentCalc.isBreakTime}
+            />
 
-              {/* 2. 대형 조작 레버 (영업 시작 / 영업 종료) */}
-              <div className="w-full flex flex-col gap-2 mt-1">
-                {taxiStatus !== 'DRIVING' && (
-                  <div className="flex items-center justify-between px-1 text-xs">
-                    <span className="text-slate-400 font-mono">
-                      {isWeekend(effectiveNow) ? '📅 주말 규정 자동 적용' : '📅 평일 규정 적용 중'}
-                    </span>
-                    {!isWeekend(effectiveNow) && (
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white transition">
-                        <input
-                          type="checkbox"
-                          checked={isManualHoliday}
-                          onChange={(e) => setIsManualHoliday(e.target.checked)}
-                          className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
-                        />
-                        <span className={isManualHoliday ? 'text-emerald-400 font-bold' : ''}>
-                          오늘 공휴일(대체공휴일)
-                        </span>
-                      </label>
-                    )}
-                  </div>
-                )}
+            {/* 2. 레트로 택시 미터기 대형 디스플레이 */}
+            <MeterDisplay
+              status={taxiStatus}
+              calc={currentCalc}
+              displayMode={settings.displayMode}
+              hourlyRate={settings.hourlyRate}
+              currentDisplayTime={currentTime}
+              startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
+              weeklyMinutes={totalWeeklyMinutes}
+              weeklyLimitHours={settings.weeklyLimitHours || 0}
+              stopPayOnLimit={settings.stopPayOnLimitReached}
+              enforceBreakTime={settings.enforceBreakTime !== false}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onAdd30Min={handleManualAdd30Min}
+              onSub30Min={handleManualSub30Min}
+            />
 
-                {taxiStatus !== 'DRIVING' ? (
-                  <button
-                    onClick={handleStartShift}
-                    disabled={taxiStatus === 'PREPARING' && !settings.testMode}
-                    className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-98 ${
-                      taxiStatus === 'PREPARING' && !settings.testMode
-                        ? 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-700'
-                        : 'bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black shadow-glow-green cursor-pointer'
-                    }`}
-                  >
-                    <Play className="w-5 h-5 fill-current" />
-                    <span>영 업 시 작 (주행 출발 🐎)</span>
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={handleEndShift}
-                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
-                    >
-                      <Square className="w-5 h-5 fill-current" />
-                      <span>영 업 종 료 (지불 / 정산 🧾)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleCancelShift}
-                      className="text-xs text-slate-500 hover:text-rose-400 py-1 text-center transition flex items-center justify-center gap-1"
-                    >
-                      ❌ 잘못 시작했나요? (기록 없이 영업 취소)
-                    </button>
-                  </div>
-                )}
-
-                {/* 하단 보조 안내 팁 */}
-                <div className="text-center text-[11px] text-slate-500 font-mono mt-1">
-                  {taxiStatus === 'DRIVING' ? (
-                    <span className="text-emerald-400 flex items-center justify-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      야근비가 30분 단위로 정산 및 누적되고 있습니다.
-                    </span>
-                  ) : (
-                    <span>
-                      평일은 20:00부터, 주말/공휴일은 언제든 영업 시작이 가능합니다.
-                    </span>
+            {/* 3. 대형 조작 레버 (영업 시작 / 영업 종료) */}
+            <div className="w-full flex flex-col gap-2 mt-1">
+              {taxiStatus !== 'DRIVING' && (
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <span className="text-slate-400 font-mono">
+                    {isWeekend(effectiveNow) ? '📅 주말 규정 자동 적용' : '📅 평일 규정 적용 중'}
+                  </span>
+                  {!isWeekend(effectiveNow) && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300 hover:text-white transition">
+                      <input
+                        type="checkbox"
+                        checked={isManualHoliday}
+                        onChange={(e) => setIsManualHoliday(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-emerald-500 rounded cursor-pointer"
+                      />
+                      <span className={isManualHoliday ? 'text-emerald-400 font-bold' : ''}>
+                        오늘 공휴일(대체공휴일)
+                      </span>
+                    </label>
                   )}
                 </div>
+              )}
+
+              {taxiStatus !== 'DRIVING' ? (
+                <button
+                  onClick={handleStartShift}
+                  disabled={taxiStatus === 'PREPARING' && !settings.testMode}
+                  className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-98 ${
+                    taxiStatus === 'PREPARING' && !settings.testMode
+                      ? 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-700'
+                      : 'bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black shadow-glow-green cursor-pointer'
+                  }`}
+                >
+                  <Play className="w-5 h-5 fill-current" />
+                  <span>영 업 시 작 (주행 출발 🐎)</span>
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleEndShift}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-base flex items-center justify-center gap-2 shadow-glow-red transition-all active:scale-98 cursor-pointer"
+                  >
+                    <Square className="w-5 h-5 fill-current" />
+                    <span>영 업 종 료 (지불 / 정산 🧾)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelShift}
+                    className="text-xs text-slate-500 hover:text-rose-400 py-1 text-center transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    ❌ 잘못 시작했나요? (기록 없이 영업 취소)
+                  </button>
+                </div>
+              )}
+
+              {/* 하단 보조 안내 팁 */}
+              <div className="text-center text-[11px] text-slate-500 font-mono mt-1">
+                {taxiStatus === 'DRIVING' ? (
+                  <span className="text-emerald-400 flex items-center justify-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    야근비가 30분 단위로 정산 및 누적되고 있습니다.
+                  </span>
+                ) : (
+                  <span>
+                    평일은 20:00부터, 주말/공휴일은 언제든 영업 시작이 가능합니다.
+                  </span>
+                )}
               </div>
             </div>
-
-            {/* 우측 영역: 레트로 택시 미터기 대형 디스플레이 */}
-            <div className="flex flex-col gap-3">
-              <MeterDisplay
-                status={taxiStatus}
-                calc={currentCalc}
-                displayMode={settings.displayMode}
-                hourlyRate={settings.hourlyRate}
-                currentDisplayTime={currentTime}
-                startTimeDate={activeShift ? new Date(activeShift.startTime) : null}
-                weeklyMinutes={totalWeeklyMinutes}
-                weeklyLimitHours={settings.weeklyLimitHours || 0}
-                stopPayOnLimit={settings.stopPayOnLimitReached}
-                enforceBreakTime={settings.enforceBreakTime !== false}
-                onOpenSettings={() => setIsSettingsOpen(true)}
-                onAdd30Min={handleManualAdd30Min}
-                onSub30Min={handleManualSub30Min}
-              />
-            </div>
-          </div>
+          </>
         ) : (
           /* 통계 및 장부 탭 */
           <HistoryStats
